@@ -29,6 +29,18 @@ python -m streamlit run src/app.py
 Opens a local browser tab showing the watchlist ranked by % change for the
 selected period.
 
+Dashboard highlights:
+- One card per category (all categories visible on one screen).
+- Card density toggle: Compact (4 columns), Balanced (3 columns), Spacious (2 columns).
+- Top Movers section with 5 tabs (top 5 instruments by % change), each tab listing
+	recent Google News search articles to help explain the move.
+- Data freshness indicators at the top:
+	- Latest market date from the stored prices.
+	- Database updated timestamp including time-of-day (local time).
+	- Market freshness badge (today / 1 day behind / 2+ days behind).
+
+Note: Top Movers news requires internet access when loading the dashboard.
+
 ## Editing the watchlist
 Edit `config/watchlist.yaml`, then run:
 ```

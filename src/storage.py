@@ -1,5 +1,6 @@
 """SQLite storage layer for daily OHLC price history."""
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -68,3 +69,11 @@ def get_last_updated(conn: sqlite3.Connection) -> str | None:
     cur = conn.execute("SELECT MAX(date) FROM prices")
     row = cur.fetchone()
     return row[0] if row else None
+
+
+def get_db_last_write_time() -> str | None:
+    """Return local timestamp of last DB write (file mtime), if available."""
+    if not DB_PATH.exists():
+        return None
+    ts = datetime.fromtimestamp(DB_PATH.stat().st_mtime)
+    return ts.strftime("%Y-%m-%d %H:%M:%S")
