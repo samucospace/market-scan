@@ -53,9 +53,57 @@ def color_pct(val):
     return f"color: {color}; font-weight: 600"
 
 
+def render_group_cards(table: pd.DataFrame, cols_per_row: int, max_card_height: int) -> None:
+    groups = sorted(table["Group"].unique())
+
+    for start in range(0, len(groups), cols_per_row):
+        row_groups = groups[start:start + cols_per_row]
+        row_cols = st.columns(cols_per_row)
+
+        for idx, group in enumerate(row_groups):
+            group_df = (
+                table[table["Group"] == group]
+                .drop(columns=["As Of", "Group"])
+                .sort_values("% Change", ascending=False, na_position="last")
+                .reset_index(drop=True)
+            )
+            group_df["% Change"] = group_df["% Change"].round(2)
+            group_df["Last Close"] = group_df["Last Close"].round(4)
+
+            card_height = min(max_card_height, 76 + (len(group_df) * 35))
+
+            with row_cols[idx]:
+                with st.container(border=True):
+                    st.subheader(group)
+                    st.caption(f"{len(group_df)} assets")
+                    st.dataframe(
+                        group_df.style.map(color_pct, subset=["% Change"]),
+                        width="stretch",
+                        hide_index=True,
+                        height=card_height,
+                    )
+
+
 st.title("Market Scan")
 
 period = st.radio("Period", ["Daily", "Weekly", "Monthly"], horizontal=True)
+
+layout_density = st.radio(
+    "Card density",
+    ["Compact", "Balanced", "Spacious"],
+    horizontal=True,
+    index=1,
+)
+
+if layout_density == "Compact":
+    cols_per_row = 4
+    max_card_height = 300
+elif layout_density == "Spacious":
+    cols_per_row = 2
+    max_card_height = 420
+else:
+    cols_per_row = 3
+    max_card_height = 360
 
 table = build_table(period)
 
@@ -64,18 +112,4 @@ if table.empty:
 else:
     as_of = table["As Of"].dropna().max()
     st.caption(f"Data as of {as_of}")
-
-    groups = ["All"] + sorted(table["Group"].unique())
-    selected_group = st.selectbox("Filter by group", groups)
-    if selected_group != "All":
-        table = table[table["Group"] == selected_group]
-
-    display = table.drop(columns=["As Of"]).reset_index(drop=True)
-    display["% Change"] = display["% Change"].round(2)
-    display["Last Close"] = display["Last Close"].round(4)
-
-    st.dataframe(
-        display.style.map(color_pct, subset=["% Change"]),
-        width="stretch",
-        hide_index=True,
-    )
+    render_group_cards(table, cols_per_row=cols_per_row, max_card_height=max_card_height)
