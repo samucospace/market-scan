@@ -1,0 +1,81 @@
+# Watchlist — Yahoo Finance tickers
+# Crypto excluded per instruction (original BTCUSD removed).
+# All tickers below confirmed live via scripts/verify_tickers.py (2026-08-24).
+
+groups:
+  FX:
+    - { ticker: AUDUSD=X, note: "AUDUSD" }
+    - { ticker: USDJPY=X, note: "USDJPY" }
+    - { ticker: EURUSD=X, note: "EURUSD" }
+    - { ticker: GBPUSD=X, note: "GBPUSD" }
+    - { ticker: AUDJPY=X, note: "AUDJPY" }
+    - { ticker: AUDSGD=X, note: "AUDSGD" }
+    - { ticker: USDSGD=X, note: "USDSGD" }
+    - { ticker: EURSGD=X, note: "EURSGD" }
+    - { ticker: SGDJPY=X, note: "SGDJPY" }
+    - { ticker: USDCAD=X, note: "USDCAD" }
+    - { ticker: AUDNZD=X, note: "AUDNZD" }
+    - { ticker: CADJPY=X, note: "CADJPY" }
+    - { ticker: USDCHF=X, note: "USDCHF" }
+    - { ticker: DX-Y.NYB, note: "DXY — US Dollar Index" }
+
+  Equity Indices:
+    - { ticker: ^GSPC,     note: "SPX500USD — S&P 500" }
+    - { ticker: ^NDX,      note: "NAS100USD — Nasdaq 100" }
+    - { ticker: ^DJI,      note: "DJI — Dow Jones Industrial Average" }
+    - { ticker: ^HSI,      note: "HSI — Hang Seng" }
+    - { ticker: ^N225,     note: "NI225 — Nikkei 225" }
+    - { ticker: ^AORD,     note: "XAO — ASX All Ordinaries" }
+    - { ticker: ^AXJO,     note: "XJO — ASX 200" }
+    - { ticker: ^GDAXI,    note: "DE30EUR — DAX 40" }
+    - { ticker: ^STOXX50E, note: "FXXP1! — Euro Stoxx 50" }
+    - { ticker: ^FTSE,     note: "UKX — FTSE 100" }
+    - { ticker: ^BVSP,     note: "IBOV — Bovespa" }
+    - { ticker: ^MXX,      note: "ME — Mexico IPC" }
+    - { ticker: ^GSPTSE,   note: "TSX — S&P/TSX Composite" }
+    - { ticker: ^JKSE,     note: "IDX80 (approximation: Jakarta Composite, not the actual IDX80 index)" }
+    - { ticker: 399006.SZ, note: "399006 — ChiNext Index (Shenzhen)" }
+    - { ticker: ES3.SI,    note: "ES3 — SPDR Straits Times Index ETF (Singapore)" }
+    # CN1! (FTSE China A50 futures) dropped — no direct Yahoo equivalent.
+
+  Commodities & Futures:
+    - { ticker: BZ=F, note: "UKOIL — Brent Crude" }
+    - { ticker: CL=F, note: "USOIL — WTI Crude" }
+    - { ticker: GC=F, note: "XAUUSD — Gold futures" }
+    - { ticker: SI=F, note: "XAGUSD — Silver futures" }
+    - { ticker: HG=F, note: "HG1! — Copper futures" }
+    - { ticker: DC=F, note: "DC1! — Class III Milk futures" }
+    - { ticker: HE=F, note: "HE1! — Lean Hogs futures" }
+    - { ticker: LE=F, note: "LE1! — Live Cattle futures" }
+    - { ticker: ZC=F, note: "ZC1! — Corn futures" }
+    - { ticker: ZR=F, note: "ZR1! — Rough Rice futures" }
+    - { ticker: ZS=F, note: "ZS1! — Soybean futures" }
+    - { ticker: ZW=F, note: "ZW1! — Wheat futures" }
+    - { ticker: CT=F, note: "TT1! (assumed Cotton No. 2 futures)" }
+    # FEF1! / TIO1! (SGX Iron Ore 62% Fe futures) dropped — no Yahoo ticker available for free.
+    # FOOD dropped — no identifiable single ticker/index matched this entry.
+
+  US Government Bond Yields:
+    # Yahoo only has free, reliable data for US Treasury yields (as indices, not prices).
+    # Non-US government bonds (China, Australia, Germany, NZ, Canada) have no good free
+    # Yahoo equivalent — flagging as a gap versus the original request.
+    - { ticker: ^IRX, note: "US 13-week Treasury yield" }
+    - { ticker: ^FVX, note: "US 5-year Treasury yield" }
+    - { ticker: ^TNX, note: "US 10-year Treasury yield" }
+    - { ticker: ^TYX, note: "US 30-year Treasury yield" }
+
+  Sector ETFs:
+    - { ticker: XLB,   note: "Materials" }
+    - { ticker: XLC,   note: "Communication Services" }
+    - { ticker: XLE,   note: "Energy" }
+    - { ticker: XLF,   note: "Financials" }
+    - { ticker: XLI,   note: "Industrials" }
+    - { ticker: XLK,   note: "Technology" }
+    - { ticker: XLP,   note: "Consumer Staples" }
+    - { ticker: XLRE,  note: "Real Estate" }
+    - { ticker: XLU,   note: "Utilities" }
+    - { ticker: XLV,   note: "Health Care" }
+    - { ticker: XLY,   note: "Consumer Discretionary" }
+
+# Excluded from original list:
+#   BTCUSD — crypto, out of scope per instruction.
