@@ -160,12 +160,17 @@ def compute_momentum_analysis(
             ignore_index=True,
         )
 
-    top1 = daily_ret.idxmax(axis=1).dropna().value_counts()
-    top1_frequency = (
-        top1.rename_axis("Ticker")
-        .reset_index(name="Top-1 days")
-        .sort_values("Top-1 days", ascending=False)
-    )
+    # Skip dates where every instrument has NA return (e.g. first row after pct_change).
+    top1_base = daily_ret.dropna(how="all")
+    if top1_base.empty:
+        top1_frequency = pd.DataFrame(columns=["Ticker", "Top-1 days"])
+    else:
+        top1 = top1_base.idxmax(axis=1).dropna().value_counts()
+        top1_frequency = (
+            top1.rename_axis("Ticker")
+            .reset_index(name="Top-1 days")
+            .sort_values("Top-1 days", ascending=False)
+        )
 
     group_rows = []
     horizon_for_groups = 1
@@ -188,7 +193,12 @@ def compute_momentum_analysis(
             "Top samples": int(len(g_top_vals)),
         })
 
-    group_breakdown = pd.DataFrame(group_rows).sort_values("Top samples", ascending=False)
+    if group_rows:
+        group_breakdown = pd.DataFrame(group_rows).sort_values("Top samples", ascending=False)
+    else:
+        group_breakdown = pd.DataFrame(
+            columns=["Group", "Top up prob % (1d)", "Baseline up prob % (1d)", "Prob edge (pp)", "Top samples"]
+        )
 
     summary = {
         "total_tickers": int(close_df.shape[1]),
