@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 import yaml
 
+from historical_analysis import compute_momentum_analysis
 from metrics import last_close, last_date, pct_change
 from storage import get_connection, get_db_last_write_time, get_prices
 
@@ -205,6 +206,81 @@ def render_group_cards(table: pd.DataFrame, cols_per_row: int, max_card_height: 
                     )
 
 
+def dataframe_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8")
+
+
+@st.cache_data(ttl=900)
+def load_momentum_results(top_k: int):
+    return compute_momentum_analysis(load_watchlist(), top_k=top_k, horizons=(1, 5))
+
+
+def render_historical_analysis_section() -> None:
+    st.subheader("Historical Momentum Check")
+    st.caption(
+        "Tests whether top daily movers tend to stay near the top and keep rising versus baseline."
+    )
+
+    top_k = st.slider("Top bucket size", min_value=1, max_value=10, value=5, step=1)
+    result = load_momentum_results(top_k)
+
+    if not result.summary:
+        st.info("Not enough historical data in the local database yet.")
+        return
+
+    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+    with stats_col1:
+        st.metric("Tickers", result.summary["total_tickers"])
+    with stats_col2:
+        st.metric("Sample days", result.summary["sample_days"])
+    with stats_col3:
+        st.metric("Top-bucket samples", result.summary["top_occurrences"])
+    with stats_col4:
+        st.metric("Date range", f"{result.summary['date_start']} to {result.summary['date_end']}")
+
+    if result.summary["sample_days"] < 120:
+        st.warning(
+            "Only a short history is available right now. Consider fetching a longer period for stronger confidence."
+        )
+
+    st.markdown("**Continuation vs Baseline**")
+    st.dataframe(result.horizon_stats.round(3), width="stretch", hide_index=True)
+
+    st.markdown("**Persistence At The Top**")
+    st.dataframe(result.persistence_stats.round(3), width="stretch", hide_index=True)
+
+    export_col1, export_col2, export_col3 = st.columns(3)
+    with export_col1:
+        st.download_button(
+            "Download continuation CSV",
+            data=dataframe_to_csv_bytes(result.horizon_stats),
+            file_name=f"continuation_top{top_k}.csv",
+            mime="text/csv",
+        )
+    with export_col2:
+        st.download_button(
+            "Download persistence CSV",
+            data=dataframe_to_csv_bytes(result.persistence_stats),
+            file_name=f"persistence_top{top_k}.csv",
+            mime="text/csv",
+        )
+    with export_col3:
+        st.download_button(
+            "Download group breakdown CSV",
+            data=dataframe_to_csv_bytes(result.group_breakdown),
+            file_name=f"group_breakdown_top{top_k}.csv",
+            mime="text/csv",
+        )
+
+    top_col, group_col = st.columns(2)
+    with top_col:
+        st.markdown("**Most Frequent Top-1 Names**")
+        st.dataframe(result.top1_frequency.head(15), width="stretch", hide_index=True)
+    with group_col:
+        st.markdown("**Group Breakdown (1D continuation)**")
+        st.dataframe(result.group_breakdown.round(3), width="stretch", hide_index=True)
+
+
 st.title("Market Scan")
 
 period = st.radio("Period", ["Daily", "Weekly", "Monthly"], horizontal=True)
@@ -243,4 +319,5 @@ else:
         render_market_freshness_badge(as_of)
 
     render_top_movers_news(table)
+    render_historical_analysis_section()
     render_group_cards(table, cols_per_row=cols_per_row, max_card_height=max_card_height)

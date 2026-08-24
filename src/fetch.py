@@ -17,9 +17,9 @@ log = logging.getLogger(__name__)
 
 WATCHLIST_PATH = Path(__file__).resolve().parent.parent / "config" / "watchlist.yaml"
 
-# ~3 months of daily bars is enough to compute 1D/1W/1M change with room for
-# holidays/weekends, without requesting more history than needed.
-FETCH_PERIOD = "3mo"
+# Pull a deeper daily history so momentum/persistence analysis has enough
+# sample size to be meaningful.
+FETCH_PERIOD = "2y"
 
 
 def load_tickers() -> list[str]:
