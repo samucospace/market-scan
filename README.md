@@ -30,7 +30,7 @@ Opens a local browser tab showing the watchlist ranked by % change for the
 selected period.
 
 Dashboard highlights:
-- Market Regime Check (top of page, toggleable between 1 Day and 1 Week lookback):
+- Market Regime Check (top of page, toggleable between 1 Day, 1 Week, and 1 Month lookback):
 	- Rates Impulse — average US Treasury yield change vs average major equity index change
 	  (pro-growth expansion vs inflation scare/tightening).
 	- FX & Dollar Strength — US Dollar Index (DXY) direction as a global financial conditions signal.

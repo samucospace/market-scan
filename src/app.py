@@ -212,9 +212,9 @@ def _avg(values: list[float | None]) -> float | None:
     return sum(clean) / len(clean) if clean else None
 
 
-REGIME_PERIODS = {"1 Day": "Daily", "1 Week": "Weekly"}
-# Weekly moves are naturally larger than daily ones, so "flat" thresholds scale up too.
-REGIME_EPS_SCALE = {"Daily": 1.0, "Weekly": 2.5}
+REGIME_PERIODS = {"1 Day": "Daily", "1 Week": "Weekly", "1 Month": "Monthly"}
+# Longer lookbacks naturally produce bigger moves, so "flat" thresholds scale up too.
+REGIME_EPS_SCALE = {"Daily": 1.0, "Weekly": 2.5, "Monthly": 5.0}
 
 
 def render_market_regime_section() -> None:
