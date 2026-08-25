@@ -9,9 +9,16 @@ import pandas as pd
 import streamlit as st
 import yaml
 
-from historical_analysis import compute_momentum_analysis
 from metrics import last_close, last_date, pct_change
 from storage import get_connection, get_db_last_write_time, get_prices
+
+YIELD_TICKERS = ["^IRX", "^FVX", "^TNX", "^TYX"]
+EQUITY_TICKERS = ["^GSPC", "^NDX", "^DJI"]
+DOLLAR_TICKER = "DX-Y.NYB"
+COPPER_TICKER = "HG=F"
+OIL_TICKERS = ["CL=F", "BZ=F"]
+CREDIT_RISK_TICKER = "HYG"
+CREDIT_SAFE_TICKER = "IEF"
 
 WATCHLIST_PATH = Path(__file__).resolve().parent.parent / "config" / "watchlist.yaml"
 
@@ -101,26 +108,26 @@ def get_news_articles(ticker: str, description: str, limit: int = 6) -> list[dic
     return articles
 
 
-def render_top_movers_news(table: pd.DataFrame) -> None:
-    top_movers = (
+def render_movers_news(table: pd.DataFrame, ascending: bool, heading: str) -> None:
+    movers = (
         table.dropna(subset=["% Change"])
-        .sort_values("% Change", ascending=False)
+        .sort_values("% Change", ascending=ascending)
         .head(5)
         .reset_index(drop=True)
     )
-    if top_movers.empty:
+    if movers.empty:
         return
 
-    st.subheader("Top Movers: Why They Moved")
+    st.subheader(heading)
     st.caption("Articles are fetched from Google News search and may include multiple viewpoints.")
 
     tab_labels = [
         f"{row['Ticker']} ({row['% Change']:+.2f}%)"
-        for _, row in top_movers.iterrows()
+        for _, row in movers.iterrows()
     ]
     tabs = st.tabs(tab_labels)
 
-    for tab, (_, row) in zip(tabs, top_movers.iterrows()):
+    for tab, (_, row) in zip(tabs, movers.iterrows()):
         with tab:
             st.markdown(
                 f"**{row['Ticker']}** | Group: {row['Group']} | Last close: {row['Last Close']:.4f}"
@@ -163,16 +170,139 @@ def render_market_freshness_badge(as_of: str) -> None:
         bg_color = "#fee2e2"
         text_color = "#991b1b"
 
+    render_badge(f"Market freshness: {badge_text}", bg_color, text_color)
+
+
+def render_badge(text: str, bg_color: str, text_color: str) -> None:
     st.markdown(
         (
             "<div style='display:inline-block;padding:0.2rem 0.6rem;"
             "border-radius:999px;font-size:0.85rem;font-weight:600;"
             f"background:{bg_color};color:{text_color};'>"
-            f"Market freshness: {badge_text}"
+            f"{text}"
             "</div>"
         ),
         unsafe_allow_html=True,
     )
+
+
+def _direction(value: float | None, eps: float = 0.02) -> str:
+    if value is None or pd.isna(value):
+        return "flat"
+    if value > eps:
+        return "up"
+    if value < -eps:
+        return "down"
+    return "flat"
+
+
+@st.cache_data(ttl=300)
+def get_daily_pct_changes(tickers: tuple[str, ...]) -> dict:
+    conn = get_connection()
+    result = {}
+    for ticker in tickers:
+        prices = get_prices(conn, ticker)
+        result[ticker] = pct_change(prices, "Daily") if not prices.empty else None
+    conn.close()
+    return result
+
+
+def _avg(values: list[float | None]) -> float | None:
+    clean = [v for v in values if v is not None and not pd.isna(v)]
+    return sum(clean) / len(clean) if clean else None
+
+
+def render_market_regime_section() -> None:
+    st.subheader("Market Regime Check (last 24h)")
+
+    all_tickers = tuple(sorted(set(
+        YIELD_TICKERS + EQUITY_TICKERS + [DOLLAR_TICKER, COPPER_TICKER, CREDIT_RISK_TICKER, CREDIT_SAFE_TICKER]
+        + OIL_TICKERS
+    )))
+    changes = get_daily_pct_changes(all_tickers)
+
+    yield_change = _avg([changes.get(t) for t in YIELD_TICKERS])
+    equity_change = _avg([changes.get(t) for t in EQUITY_TICKERS])
+    dollar_change = changes.get(DOLLAR_TICKER)
+    copper_change = changes.get(COPPER_TICKER)
+    oil_change = _avg([changes.get(t) for t in OIL_TICKERS])
+    hyg_change = changes.get(CREDIT_RISK_TICKER)
+    ief_change = changes.get(CREDIT_SAFE_TICKER)
+    hy_relative = None if hyg_change is None or ief_change is None else hyg_change - ief_change
+
+    yields_dir = _direction(yield_change)
+    equities_dir = _direction(equity_change)
+    dollar_dir = _direction(dollar_change, eps=0.15)
+    copper_dir = _direction(copper_change, eps=0.2)
+    oil_dir = _direction(oil_change, eps=0.2)
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        with st.container(border=True):
+            st.markdown("**Rates Impulse**")
+            st.caption("Yields up + equities up = pro-growth. Yields up + equities down = inflation scare.")
+            st.caption(
+                f"Yields avg: {yield_change:+.2f}%" if yield_change is not None else "Yields avg: n/a"
+            )
+            st.caption(
+                f"Equities avg: {equity_change:+.2f}%" if equity_change is not None else "Equities avg: n/a"
+            )
+            if yields_dir == "up" and equities_dir == "up":
+                render_badge("Pro-growth expansion", "#d1fae5", "#065f46")
+            elif yields_dir == "up" and equities_dir == "down":
+                render_badge("Inflation scare / tightening", "#fee2e2", "#991b1b")
+            elif yields_dir == "down" and equities_dir == "up":
+                render_badge("Dovish rally", "#fef3c7", "#92400e")
+            elif yields_dir == "down" and equities_dir == "down":
+                render_badge("Growth scare / flight to quality", "#fee2e2", "#991b1b")
+            else:
+                render_badge("Mixed / flat signal", "#e5e7eb", "#374151")
+
+    with col2:
+        with st.container(border=True):
+            st.markdown("**FX & Dollar Strength**")
+            st.caption("A surging dollar tightens global conditions, pressuring EM and commodity importers.")
+            st.caption(f"DXY: {dollar_change:+.2f}%" if dollar_change is not None else "DXY: n/a")
+            if dollar_dir == "up":
+                render_badge("Dollar strength - global tightening", "#fee2e2", "#991b1b")
+            elif dollar_dir == "down":
+                render_badge("Dollar weakness - easier conditions", "#d1fae5", "#065f46")
+            else:
+                render_badge("Dollar flat - no confirmation", "#e5e7eb", "#374151")
+
+    with col3:
+        with st.container(border=True):
+            st.markdown("**Copper vs Oil**")
+            st.caption("Copper up + oil stable = cyclical demand. Oil spiking alone = consumer tax.")
+            st.caption(f"Copper: {copper_change:+.2f}%" if copper_change is not None else "Copper: n/a")
+            st.caption(f"Oil avg: {oil_change:+.2f}%" if oil_change is not None else "Oil avg: n/a")
+            if copper_dir == "up" and oil_dir != "up":
+                render_badge("Industrial demand strengthening", "#d1fae5", "#065f46")
+            elif oil_dir == "up" and copper_dir != "up":
+                render_badge("Oil-led move - consumer tax risk", "#fef3c7", "#92400e")
+            elif copper_dir == "up" and oil_dir == "up":
+                render_badge("Broad commodity demand strength", "#d1fae5", "#065f46")
+            elif copper_dir == "down" and oil_dir == "down":
+                render_badge("Broad commodity demand weakening", "#fee2e2", "#991b1b")
+            else:
+                render_badge("Mixed signal", "#e5e7eb", "#374151")
+
+    with col4:
+        with st.container(border=True):
+            st.markdown("**Credit Stress**")
+            st.caption("Equities down + HY spreads tight = routine pullback. Spreads blowout too = systemic risk.")
+            st.caption(
+                f"HYG vs IEF: {hy_relative:+.2f}%" if hy_relative is not None else "HYG vs IEF: n/a"
+            )
+            if equities_dir != "down":
+                render_badge("No equity stress to cross-check", "#e5e7eb", "#374151")
+            elif hy_relative is None:
+                render_badge("Credit data unavailable", "#e5e7eb", "#374151")
+            elif hy_relative < -0.4:
+                render_badge("Credit stress building - spreads widening", "#fee2e2", "#991b1b")
+            else:
+                render_badge("Routine pullback - credit stable", "#d1fae5", "#065f46")
 
 
 def render_group_cards(table: pd.DataFrame, cols_per_row: int, max_card_height: int) -> None:
@@ -206,82 +336,10 @@ def render_group_cards(table: pd.DataFrame, cols_per_row: int, max_card_height: 
                     )
 
 
-def dataframe_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False).encode("utf-8")
-
-
-@st.cache_data(ttl=900)
-def load_momentum_results(top_k: int):
-    return compute_momentum_analysis(load_watchlist(), top_k=top_k, horizons=(1, 5))
-
-
-def render_historical_analysis_section() -> None:
-    st.subheader("Historical Momentum Check")
-    st.caption(
-        "Tests whether top daily movers tend to stay near the top and keep rising versus baseline."
-    )
-
-    top_k = st.slider("Top bucket size", min_value=1, max_value=10, value=5, step=1)
-    result = load_momentum_results(top_k)
-
-    if not result.summary:
-        st.info("Not enough historical data in the local database yet.")
-        return
-
-    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
-    with stats_col1:
-        st.metric("Tickers", result.summary["total_tickers"])
-    with stats_col2:
-        st.metric("Sample days", result.summary["sample_days"])
-    with stats_col3:
-        st.metric("Top-bucket samples", result.summary["top_occurrences"])
-    with stats_col4:
-        st.metric("Date range", f"{result.summary['date_start']} to {result.summary['date_end']}")
-
-    if result.summary["sample_days"] < 120:
-        st.warning(
-            "Only a short history is available right now. Consider fetching a longer period for stronger confidence."
-        )
-
-    st.markdown("**Continuation vs Baseline**")
-    st.dataframe(result.horizon_stats.round(3), width="stretch", hide_index=True)
-
-    st.markdown("**Persistence At The Top**")
-    st.dataframe(result.persistence_stats.round(3), width="stretch", hide_index=True)
-
-    export_col1, export_col2, export_col3 = st.columns(3)
-    with export_col1:
-        st.download_button(
-            "Download continuation CSV",
-            data=dataframe_to_csv_bytes(result.horizon_stats),
-            file_name=f"continuation_top{top_k}.csv",
-            mime="text/csv",
-        )
-    with export_col2:
-        st.download_button(
-            "Download persistence CSV",
-            data=dataframe_to_csv_bytes(result.persistence_stats),
-            file_name=f"persistence_top{top_k}.csv",
-            mime="text/csv",
-        )
-    with export_col3:
-        st.download_button(
-            "Download group breakdown CSV",
-            data=dataframe_to_csv_bytes(result.group_breakdown),
-            file_name=f"group_breakdown_top{top_k}.csv",
-            mime="text/csv",
-        )
-
-    top_col, group_col = st.columns(2)
-    with top_col:
-        st.markdown("**Most Frequent Top-1 Names**")
-        st.dataframe(result.top1_frequency.head(15), width="stretch", hide_index=True)
-    with group_col:
-        st.markdown("**Group Breakdown (1D continuation)**")
-        st.dataframe(result.group_breakdown.round(3), width="stretch", hide_index=True)
-
-
 st.title("Market Scan")
+
+render_market_regime_section()
+st.divider()
 
 period = st.radio("Period", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
@@ -318,6 +376,8 @@ else:
     with badge_col:
         render_market_freshness_badge(as_of)
 
-    render_top_movers_news(table)
-    render_historical_analysis_section()
     render_group_cards(table, cols_per_row=cols_per_row, max_card_height=max_card_height)
+
+    st.divider()
+    render_movers_news(table, ascending=False, heading="Top 5 Movers: Why They Moved")
+    render_movers_news(table, ascending=True, heading="Bottom 5 Movers: Why They Moved")

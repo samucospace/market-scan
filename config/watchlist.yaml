@@ -77,5 +77,11 @@ groups:
     - { ticker: XLV,   note: "Health Care" }
     - { ticker: XLY,   note: "Consumer Discretionary" }
 
+  Credit Proxies:
+    # No free Yahoo feed for actual HY OAS spreads — HYG vs IEF relative performance
+    # is used as a proxy for credit stress (HYG underperforming IEF = spreads widening).
+    - { ticker: HYG, note: "iShares iBoxx High Yield Corporate Bond ETF (credit risk proxy)" }
+    - { ticker: IEF, note: "iShares 7-10 Year Treasury Bond ETF (safe-duration proxy)" }
+
 # Excluded from original list:
 #   BTCUSD — crypto, out of scope per instruction.
