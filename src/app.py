@@ -197,12 +197,12 @@ def _direction(value: float | None, eps: float = 0.02) -> str:
 
 
 @st.cache_data(ttl=300)
-def get_daily_pct_changes(tickers: tuple[str, ...]) -> dict:
+def get_regime_pct_changes(tickers: tuple[str, ...], period: str) -> dict:
     conn = get_connection()
     result = {}
     for ticker in tickers:
         prices = get_prices(conn, ticker)
-        result[ticker] = pct_change(prices, "Daily") if not prices.empty else None
+        result[ticker] = pct_change(prices, period) if not prices.empty else None
     conn.close()
     return result
 
@@ -212,14 +212,28 @@ def _avg(values: list[float | None]) -> float | None:
     return sum(clean) / len(clean) if clean else None
 
 
+REGIME_PERIODS = {"1 Day": "Daily", "1 Week": "Weekly"}
+# Weekly moves are naturally larger than daily ones, so "flat" thresholds scale up too.
+REGIME_EPS_SCALE = {"Daily": 1.0, "Weekly": 2.5}
+
+
 def render_market_regime_section() -> None:
-    st.subheader("Market Regime Check (last 24h)")
+    header_col, toggle_col = st.columns([3, 2])
+    with header_col:
+        st.subheader("Market Regime Check")
+    with toggle_col:
+        period_label = st.radio(
+            "Regime lookback", list(REGIME_PERIODS.keys()), horizontal=True, index=0, label_visibility="collapsed"
+        )
+    period = REGIME_PERIODS[period_label]
+    scale = REGIME_EPS_SCALE[period]
+    st.caption(f"Based on {period_label.lower()} change.")
 
     all_tickers = tuple(sorted(set(
         YIELD_TICKERS + EQUITY_TICKERS + [DOLLAR_TICKER, COPPER_TICKER, CREDIT_RISK_TICKER, CREDIT_SAFE_TICKER]
         + OIL_TICKERS
     )))
-    changes = get_daily_pct_changes(all_tickers)
+    changes = get_regime_pct_changes(all_tickers, period)
 
     yield_change = _avg([changes.get(t) for t in YIELD_TICKERS])
     equity_change = _avg([changes.get(t) for t in EQUITY_TICKERS])
@@ -230,11 +244,11 @@ def render_market_regime_section() -> None:
     ief_change = changes.get(CREDIT_SAFE_TICKER)
     hy_relative = None if hyg_change is None or ief_change is None else hyg_change - ief_change
 
-    yields_dir = _direction(yield_change)
-    equities_dir = _direction(equity_change)
-    dollar_dir = _direction(dollar_change, eps=0.15)
-    copper_dir = _direction(copper_change, eps=0.2)
-    oil_dir = _direction(oil_change, eps=0.2)
+    yields_dir = _direction(yield_change, eps=0.02 * scale)
+    equities_dir = _direction(equity_change, eps=0.02 * scale)
+    dollar_dir = _direction(dollar_change, eps=0.15 * scale)
+    copper_dir = _direction(copper_change, eps=0.2 * scale)
+    oil_dir = _direction(oil_change, eps=0.2 * scale)
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -299,7 +313,7 @@ def render_market_regime_section() -> None:
                 render_badge("No equity stress to cross-check", "#e5e7eb", "#374151")
             elif hy_relative is None:
                 render_badge("Credit data unavailable", "#e5e7eb", "#374151")
-            elif hy_relative < -0.4:
+            elif hy_relative < -0.4 * scale:
                 render_badge("Credit stress building - spreads widening", "#fee2e2", "#991b1b")
             else:
                 render_badge("Routine pullback - credit stable", "#d1fae5", "#065f46")
