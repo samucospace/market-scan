@@ -1,4 +1,4 @@
-"""Streamlit dashboard: Market Regime, Early Warning Radar, and Top 3 Swing Trades."""
+"""Streamlit dashboard: Market Regime, Early Warning Radar, Top 3 Swing Trades, and Central Banks."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import yaml
 
+from central_banks import get_central_banks_report
 from early_signals import scan_early_signals
 from metrics import (
     calculate_rsi,
@@ -28,7 +29,7 @@ from swing_screener import generate_trade_chart, scan_swing_trades
 WATCHLIST_PATH = Path(__file__).resolve().parent.parent / "config" / "watchlist.yaml"
 
 st.set_page_config(
-    page_title="Market Scan — Macro Regime & Swing Trading",
+    page_title="Market Scan — Macro Regime, Central Banks & Swing Trading",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -136,20 +137,22 @@ conn = get_connection()
 macro_report = calculate_macro_regime(conn)
 early_report = scan_early_signals(conn)
 screener_result = scan_swing_trades(watchlist, conn)
+cb_report = get_central_banks_report(conn)
 conn.close()
 
 st.title("Market Scan")
-st.caption("Institutional Macro Regime Analysis, Early Warning Radar & Actionable Swing Trade Engine")
+st.caption("Institutional Macro Regime Analysis, Central Bank Tracker, Early Warning Radar & Actionable Swing Trade Engine")
 
 # Expandable Overview & Framework Guide
 with st.expander("📖 Dashboard Primer: How to Read & Apply This Platform", expanded=False):
     st.markdown(r"""
     ### Institutional Macro & Swing Trading Framework
-    This platform operates in four continuous layers to turn raw multi-asset market data into high-probability trades:
+    This platform operates in continuous layers to turn raw multi-asset market data into high-probability trades:
     1. **Top KPI Header (Macro Weather Report):** Identifies the prevailing economic cycle quadrant, overall risk appetite score (0–100), US Treasury yield curve structure, and active cross-asset divergences.
     2. **Macro Regime Matrix (The 'Why'):** Evaluates **Growth vs. Inflation impulses**. Different assets structurally thrive in different quadrants (e.g., Commodities thrive in *Reflation*, Tech in *Goldilocks*, Gold/Defensives in *Stagflation*, Bonds/Cash in *Contraction*).
-    3. **Early Warning Radar (The 'When'):** Smart capital leaves footprints in leading indicators (Corporate credit spreads, Copper/Gold, AUD/JPY, Dollar squeezes) days or weeks before headline equity indices roll over.
-    4. **Top 3 Swing Trades (The 'What to Trade'):** Algorithmic setups designed for **3-day to 3-week holding periods**, aligning micro technical entry setups with the overarching macro tailwind for asymmetrical positive mathematical expectancy.
+    3. **Central Banks & Interest Rates (The Policy Anchor):** Monetary policy and policy rate differentials drive long-term currency valuations and multi-week FX trends.
+    4. **Early Warning Radar (The 'When'):** Smart capital leaves footprints in leading indicators (Corporate credit spreads, Copper/Gold, AUD/JPY, Dollar squeezes) days or weeks before headline equity indices roll over.
+    5. **Top 3 Swing Trades (The 'What to Trade'):** Algorithmic setups designed for **3-day to 3-week holding periods**, aligning micro technical entry setups with overarching macro tailwinds.
     """)
 
 # Top KPI Status Cards
@@ -168,7 +171,7 @@ with kpi1:
             badge_bg, badge_txt = "#fee2e2", "#991b1b"
         render_badge(macro_report.quadrant_name, badge_bg, badge_txt)
         st.caption(f"Growth: **{macro_report.growth_score:+.1f}** | Inflation: **{macro_report.inflation_score:+.1f}**")
-        st.caption("ℹ️ *Determines which asset classes have fundamental wind at their back.*")
+        st.caption("ℹ️ *Determines which asset classes have fundamental tailwinds.*")
 
 with kpi2:
     with st.container(border=True):
@@ -192,22 +195,24 @@ with kpi3:
 
 with kpi4:
     with st.container(border=True):
-        st.markdown("**Early Warning Radar**")
-        num_alerts = len(early_report.alerts)
-        alert_bg = "#fee2e2" if num_alerts > 1 else ("#fef3c7" if num_alerts == 1 else "#d1fae5")
-        alert_txt = "#991b1b" if num_alerts > 1 else ("#92400e" if num_alerts == 1 else "#065f46")
-        render_badge(f"{num_alerts} Active Signal{'s' if num_alerts != 1 else ''}", alert_bg, alert_txt)
-        st.caption(f"Breadth: **{early_report.breadth.pct_above_sma20:.0f}%** > 20 SMA | **{len(early_report.squeeze_candidates)}** Squeezes")
-        st.caption("ℹ️ *Leading anomaly alerts before market-wide trend changes.*")
+        st.markdown("**Next Central Bank Meeting**")
+        if cb_report.next_upcoming_meeting:
+            next_m = cb_report.next_upcoming_meeting
+            render_badge(f"{next_m.flag} {next_m.bank_name}", "#eff6ff", "#1e40af")
+            st.caption(f"Date: **{next_m.meeting_date}** (In **{next_m.days_left}** days)")
+            st.caption(f"Current Rate: **{next_m.policy_rate:.2f}%** | Stance: `{next_m.stance}`")
+        else:
+            st.caption("No upcoming meetings scheduled.")
 
 st.divider()
 
 # -------------------------------------------------------------
 # Main Application Tabs
 # -------------------------------------------------------------
-tab_swing, tab_macro, tab_signals, tab_watchlist, tab_screener, tab_news = st.tabs([
+tab_swing, tab_macro, tab_cb, tab_signals, tab_watchlist, tab_screener, tab_news = st.tabs([
     "🎯 Top 3 Swing Trades",
     "🌐 Market Regime & Macro Matrix",
+    "🏛️ Central Banks & Rates",
     "⚡ Early Signs & Inflection Radar",
     "📊 Watchlist & Group Rankings",
     "🔍 All Setups Screener",
@@ -421,7 +426,133 @@ with tab_macro:
             st.plotly_chart(fig_yc, use_container_width=True)
 
 # =============================================================
-# TAB 3: Early Signs & Inflection Radar
+# TAB 3: Central Banks & Interest Rates
+# =============================================================
+with tab_cb:
+    st.subheader("Major Central Banks: Current Position & Upcoming Meetings")
+    st.caption("Monetary policy stances, interest rate differentials vs. Fed, meeting schedules, and FX carry trade drivers.")
+
+    with st.expander("📚 How Central Bank Differentials Drive FX Trends & Carry Trades", expanded=False):
+        st.markdown(r"""
+        ### The Mechanics of FX Carry & Monetary Divergence
+        1. **Interest Rate Parity & Carry Trades:** Capital flows from low-yielding currencies (e.g. `JPY` at ~0.50%, `CHF` at 1.00%) to high-yielding currencies (e.g. `USD` at 4.625%, `GBP` at 4.50%, `AUD` at 4.10%). The investor earns the interest rate differential (*positive carry*).
+        2. **Policy Divergence as a Trend Driver:** When one central bank is actively raising rates (or holding high) while another is cutting, the currency pair develops strong multi-month directional trends.
+        3. **Event-Driven Volatility:** Central bank rate decisions, accompanying press conferences, and the 'dot plot' / forward guidance are the primary volatility catalysts for multi-week swing traders.
+        """)
+
+    # Top KPI Metrics for Central Banks
+    cb_m1, cb_m2, cb_m3, cb_m4 = st.columns(4)
+    with cb_m1:
+        with st.container(border=True):
+            st.markdown("**Next Upcoming Decision**")
+            if cb_report.next_upcoming_meeting:
+                nxt = cb_report.next_upcoming_meeting
+                st.markdown(f"### {nxt.flag} {nxt.currency}")
+                st.caption(f"**{nxt.bank_name}**")
+                st.caption(f"🗓️ `{nxt.meeting_date}` (**In {nxt.days_left} days**)")
+    with cb_m2:
+        with st.container(border=True):
+            st.markdown("**US Fed Benchmark Rate**")
+            st.markdown(f"### {cb_report.usd_rate:.2f}%")
+            st.caption("Fed Funds Target: 4.50% - 4.75%")
+            st.caption("Anchor for global dollar liquidity")
+    with cb_m3:
+        with st.container(border=True):
+            st.markdown("**Widest G10 Spread vs USD**")
+            st.markdown("### -4.125% (JPY)")
+            st.caption("BOJ Rate: 0.50% vs Fed: 4.625%")
+            st.caption("Primary global carry trade driver")
+    with cb_m4:
+        with st.container(border=True):
+            st.markdown("**Central Bank Normalization**")
+            st.markdown("### 🇯🇵 BOJ (+5.5)")
+            st.caption("Only G10 bank in active tightening cycle")
+            st.caption("Trigger for global carry unwinds")
+
+    st.divider()
+
+    # Section A: Global Central Bank Policy Matrix
+    st.subheader("Global Central Bank Policy Matrix")
+    st.caption("Comparative view of G10 + MAS central banks, rate spreads against the US Dollar, and upcoming decision countdowns.")
+    st.dataframe(cb_report.policy_matrix, hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # Section B: Policy Stance Spectrum (Plotly Bar Chart)
+    col_chart, col_timeline = st.columns([3, 2])
+
+    with col_chart:
+        st.subheader("Policy Stance Spectrum (Hawkish vs. Dovish)")
+        st.caption("Ranked from most Dovish (actively cutting) to most Hawkish (hiking / restrictive).")
+
+        spectrum_data = []
+        for b in sorted(cb_report.banks, key=lambda x: x.stance_score):
+            spectrum_data.append({
+                "Bank": f"{b.flag} {b.currency} ({b.code})",
+                "Stance Score": b.stance_score,
+                "Stance Label": b.stance,
+                "Rate": b.rate_display,
+            })
+        spec_df = pd.DataFrame(spectrum_data)
+
+        fig_spec = px.bar(
+            spec_df,
+            x="Stance Score",
+            y="Bank",
+            orientation="h",
+            text="Stance Label",
+            color="Stance Score",
+            color_continuous_scale=["#ef4444", "#f59e0b", "#10b981"],
+            range_x=[-7, 8],
+        )
+        fig_spec.add_vline(x=0, line_dash="dash", line_color="gray", annotation_text="Neutral", annotation_position="top")
+        fig_spec.update_layout(
+            height=380,
+            margin=dict(l=20, r=20, t=20, b=20),
+            coloraxis_showscale=False,
+            template="plotly_white",
+        )
+        fig_spec.update_traces(textposition="inside")
+        st.plotly_chart(fig_spec, use_container_width=True)
+
+    with col_timeline:
+        st.subheader("Upcoming Meeting Schedule")
+        st.caption("Chronological calendar of the next central bank interest rate decisions.")
+        
+        timeline_rows = []
+        for m in cb_report.all_upcoming_meetings[:10]:
+            timeline_rows.append({
+                "Date": m.meeting_date,
+                "Countdown": f"In {m.days_left}d",
+                "Central Bank": f"{m.flag} {m.currency} ({m.bank_name.split('(')[0].strip()})",
+                "Current Rate": f"{m.policy_rate:.2f}%",
+            })
+        st.dataframe(pd.DataFrame(timeline_rows), hide_index=True, use_container_width=True, height=350)
+
+    st.divider()
+
+    # Section C: Detailed Central Bank Dossiers
+    st.subheader("Individual Central Bank Dossiers")
+    st.caption("Policy overview, key macroeconomic drivers, and tactical FX implications per central bank.")
+
+    cb_cols = st.columns(3)
+    for idx, b in enumerate(cb_report.banks):
+        with cb_cols[idx % 3]:
+            with st.container(border=True):
+                st.markdown(f"### {b.flag} {b.name}")
+                st.markdown(f"**Policy Rate:** `{b.rate_display}` | **Spread vs Fed:** `{b.rate_spread_vs_usd:+.2f}%`")
+                st.markdown(f"**Stance:** `{b.stance}` | **Chair/Governor:** {b.chair}")
+                st.markdown(f"🗓️ **Next Decision:** `{b.next_meeting}` (In **{b.days_to_meeting}** days)")
+                st.caption(f"**Balance Sheet:** {b.balance_sheet}")
+                st.divider()
+                st.markdown(f"**Policy Outlook:** {b.summary}")
+                st.markdown("**Key Monitoring Drivers:**")
+                for d in b.key_drivers:
+                    st.markdown(f"• {d}")
+                st.info(f"💱 **FX Implication ({b.fx_pair_display}):** {b.fx_implication}")
+
+# =============================================================
+# TAB 4: Early Signs & Inflection Radar
 # =============================================================
 with tab_signals:
     st.subheader("Early Warning Signals & Cross-Asset Divergence Radar")
@@ -492,7 +623,7 @@ with tab_signals:
             st.dataframe(sq_df, hide_index=True, use_container_width=True)
 
 # =============================================================
-# TAB 4: Watchlist & Category Rankings
+# TAB 5: Watchlist & Category Rankings
 # =============================================================
 with tab_watchlist:
     st.subheader("Watchlist Performance & Technical Health")
@@ -564,7 +695,7 @@ with tab_watchlist:
                             )
 
 # =============================================================
-# TAB 5: All Setups Screener
+# TAB 6: All Setups Screener
 # =============================================================
 with tab_screener:
     st.subheader("Quantitative Swing Trade Screener (All 59 Assets)")
@@ -621,7 +752,7 @@ with tab_screener:
         st.dataframe(full_df, hide_index=True, use_container_width=True, height=500)
 
 # =============================================================
-# TAB 6: Movers & Catalyst News
+# TAB 7: Movers & Catalyst News
 # =============================================================
 with tab_news:
     st.subheader("Top & Bottom Movers: Why They Moved")

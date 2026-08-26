@@ -1,0 +1,249 @@
+# Central Banks Policy & Meeting Schedule Configuration
+# Contains current policy rates, stances, upcoming meeting dates, and FX implications.
+
+central_banks:
+  USD:
+    name: "Federal Reserve (Fed)"
+    currency: "USD"
+    flag: "🇺🇸"
+    policy_rate_name: "Fed Funds Target Rate"
+    policy_rate: 4.625 # Midpoint of 4.50% - 4.75%
+    rate_display: "4.50% - 4.75%"
+    stance: "Neutral / Data-Dependent" # Hawkish, Neutral-Hawkish, Neutral, Neutral-Dovish, Dovish
+    stance_score: 1.0 # -10 (Extremely Dovish) to +10 (Extremely Hawkish)
+    balance_sheet: "Quantitative Tightening (QT) tapering"
+    chair: "Jerome Powell"
+    next_meeting: "2026-09-17"
+    meetings_schedule:
+      - "2026-09-17"
+      - "2026-11-05"
+      - "2026-12-16"
+      - "2027-01-28"
+      - "2027-03-18"
+      - "2027-05-06"
+    primary_fx_pair: "DX-Y.NYB"
+    fx_pair_display: "DXY (US Dollar Index)"
+    summary: "Managing the soft-landing balance. Monitoring labor market stabilization against stubborn services inflation. Rate trajectory is calibrated meeting-by-meeting."
+    key_drivers:
+      - "Core PCE Inflation and wage growth cooling toward 2.0% target"
+      - "Labor market unemployment rate and non-farm payroll trends"
+      - "Financial conditions easing via equity market strength"
+    fx_implication: "Dollar remains supported by positive real yield advantage against EUR/JPY, but vulnerable if labor data softens sharply."
+
+  EUR:
+    name: "European Central Bank (ECB)"
+    currency: "EUR"
+    flag: "🇪🇺"
+    policy_rate_name: "Deposit Facility Rate"
+    policy_rate: 3.00
+    rate_display: "3.00% (Deposit) / 3.15% (Refi)"
+    stance: "Neutral-Dovish"
+    stance_score: -3.0
+    balance_sheet: "APP runoff complete, PEPP reinvestment tapering"
+    chair: "Christine Lagarde"
+    next_meeting: "2026-09-10"
+    meetings_schedule:
+      - "2026-09-10"
+      - "2026-10-29"
+      - "2026-12-17"
+      - "2027-01-28"
+      - "2027-03-11"
+      - "2027-04-29"
+    primary_fx_pair: "EURUSD=X"
+    fx_pair_display: "EUR/USD"
+    summary: "Gradual easing cycle underway as Eurozone inflation retreats toward target and manufacturing activity in Germany/France remains sluggish."
+    key_drivers:
+      - "Eurozone headline and services inflation trajectory"
+      - "Manufacturing PMI weakness vs services resilience"
+      - "Wage growth moderation across the Euro area"
+    fx_implication: "EUR upside capped vs USD due to negative rate differential (-1.625%), but supported against JPY on carry."
+
+  JPY:
+    name: "Bank of Japan (BOJ)"
+    currency: "JPY"
+    flag: "🇯🇵"
+    policy_rate_name: "Uncollateralized Overnight Call Rate"
+    policy_rate: 0.50
+    rate_display: "0.50% - 0.75%"
+    stance: "Hawkish Normalization"
+    stance_score: 5.5
+    balance_sheet: "Phasing out JGB purchase tapering program"
+    chair: "Kazuo Ueda"
+    next_meeting: "2026-09-19"
+    meetings_schedule:
+      - "2026-09-19"
+      - "2026-10-30"
+      - "2026-12-19"
+      - "2027-01-23"
+      - "2027-03-19"
+      - "2027-04-30"
+    primary_fx_pair: "USDJPY=X"
+    fx_pair_display: "USD/JPY"
+    summary: "The only major G10 central bank actively raising policy rates from zero. Focused on achieving sustainable 2% inflation backed by broad wage increases (Shunto)."
+    key_drivers:
+      - "Spring wage negotiation results and real wage growth"
+      - "Underlying services CPI and inflation expectations"
+      - "FX volatility and imported cost inflation risks"
+    fx_implication: "Hawkish BOJ surprises trigger rapid Yen carry-trade unwinds and volatility spikes across global risk assets."
+
+  GBP:
+    name: "Bank of England (BOE)"
+    currency: "GBP"
+    flag: "🇬🇧"
+    policy_rate_name: "Official Bank Rate"
+    policy_rate: 4.50
+    rate_display: "4.50%"
+    stance: "Neutral / Gradual Easing"
+    stance_score: -1.0
+    balance_sheet: "Active Gilt sales (£100bn/yr QT)"
+    chair: "Andrew Bailey"
+    next_meeting: "2026-09-17"
+    meetings_schedule:
+      - "2026-09-17"
+      - "2026-11-05"
+      - "2026-12-17"
+      - "2027-02-04"
+      - "2027-03-18"
+      - "2027-05-06"
+    primary_fx_pair: "GBPUSD=X"
+    fx_pair_display: "GBP/USD"
+    summary: "Cautious easing cycle. High services inflation and persistent UK wage growth keep the MPC split between hawks and doves."
+    key_drivers:
+      - "UK services inflation and private sector regular wage growth"
+      - "Fiscal policy budget updates and gilt yields"
+      - "UK GDP growth momentum"
+    fx_implication: "Relatively high yields keep Sterling resilient against EUR, though vulnerable to growth decelerations."
+
+  AUD:
+    name: "Reserve Bank of Australia (RBA)"
+    currency: "AUD"
+    flag: "🇦🇺"
+    policy_rate_name: "Cash Rate Target"
+    policy_rate: 4.10
+    rate_display: "4.10%"
+    stance: "Neutral-Hawkish"
+    stance_score: 2.5
+    balance_sheet: "Passive bond runoff"
+    chair: "Michele Bullock"
+    next_meeting: "2026-09-29"
+    meetings_schedule:
+      - "2026-09-29"
+      - "2026-11-03"
+      - "2026-12-08"
+      - "2027-02-09"
+      - "2027-03-16"
+      - "2027-05-04"
+    primary_fx_pair: "AUDUSD=X"
+    fx_pair_display: "AUD/USD"
+    summary: "Maintaining a restrictive stance due to sticky underlying trimmed-mean inflation and a tight Australian labor market."
+    key_drivers:
+      - "Quarterly Trimmed Mean CPI and domestic services costs"
+      - "Australian employment and wage price index"
+      - "China economic growth and iron ore/coal export demand"
+    fx_implication: "High-beta currency that rallies in global risk-on expansion, boosted by RBA's relatively hawkish rate stance."
+
+  CAD:
+    name: "Bank of Canada (BOC)"
+    currency: "CAD"
+    flag: "🇨🇦"
+    policy_rate_name: "Overnight Target Rate"
+    policy_rate: 3.75
+    rate_display: "3.75%"
+    stance: "Neutral-Dovish"
+    stance_score: -2.5
+    balance_sheet: "Passive QT (Govt of Canada bond runoff)"
+    chair: "Tiff Macklem"
+    next_meeting: "2026-09-09"
+    meetings_schedule:
+      - "2026-09-09"
+      - "2026-10-28"
+      - "2026-12-09"
+      - "2027-01-27"
+      - "2027-03-10"
+      - "2027-04-21"
+    primary_fx_pair: "USDCAD=X"
+    fx_pair_display: "USD/CAD"
+    summary: "Actively cutting rates to ease debt servicing burdens on highly indebted Canadian mortgage holders as headline inflation hits target."
+    key_drivers:
+      - "Core median/trimmed CPI inflation measures"
+      - "Household debt servicing ratios and housing market softness"
+      - "Crude oil prices (WTI/Western Canadian Select)"
+    fx_implication: "CAD under pressure from widening negative rate gap with the Fed, partially offset when crude oil rallies."
+
+  CHF:
+    name: "Swiss National Bank (SNB)"
+    currency: "CHF"
+    flag: "🇨🇭"
+    policy_rate_name: "SNB Policy Rate"
+    policy_rate: 1.00
+    rate_display: "1.00%"
+    stance: "Dovish / Anti-Franc Strength"
+    stance_score: -4.0
+    balance_sheet: "Active FX market interventions to curb CHF strength"
+    chair: "Martin Schlegel"
+    next_meeting: "2026-09-24"
+    meetings_schedule:
+      - "2026-09-24"
+      - "2026-12-10"
+      - "2027-03-18"
+      - "2027-06-17"
+    primary_fx_pair: "USDCHF=X"
+    fx_pair_display: "USD/CHF"
+    summary: "Low inflation environment allows SNB to maintain low rates. Actively leaning against excessive Swiss Franc strength to protect Swiss exporters."
+    key_drivers:
+      - "Swiss CPI inflation (consistently under 1.5%)"
+      - "Real effective exchange rate of the Swiss Franc"
+      - "European political and sovereign credit risks"
+    fx_implication: "Lowest yielding G10 currency alongside JPY; popular funding currency for carry trades, surges during European geopolitical stress."
+
+  NZD:
+    name: "Reserve Bank of New Zealand (RBNZ)"
+    currency: "NZD"
+    flag: "🇳🇿"
+    policy_rate_name: "Official Cash Rate (OCR)"
+    policy_rate: 4.25
+    rate_display: "4.25%"
+    stance: "Neutral Easing"
+    stance_score: -2.0
+    balance_sheet: "Large Scale Asset Purchase bond sales"
+    chair: "Adrian Orr"
+    next_meeting: "2026-10-07"
+    meetings_schedule:
+      - "2026-10-07"
+      - "2026-11-25"
+      - "2027-02-24"
+      - "2027-04-07"
+      - "2027-05-26"
+    primary_fx_pair: "AUDNZD=X"
+    fx_pair_display: "AUD/NZD"
+    summary: "Easing monetary conditions as New Zealand economic activity contracted and inflation returned inside the 1-3% target band."
+    key_drivers:
+      - "New Zealand GDP recession/recovery dynamics"
+      - "Non-tradables inflation and employment data"
+      - "Dairy auction prices (Global Dairy Trade index)"
+    fx_implication: "Underperforming AUD on monetary policy divergence (RBA more hawkish than RBNZ)."
+
+  SGD:
+    name: "Monetary Authority of Singapore (MAS)"
+    currency: "SGD"
+    flag: "🇸🇬"
+    policy_rate_name: "S$NEER Policy Band (FX-centered)"
+    policy_rate: 3.25 # SORA proxy
+    rate_display: "S$NEER Appreciation Band (SORA ~3.25%)"
+    stance: "Neutral-Hawkish Appreciation"
+    stance_score: 2.0
+    balance_sheet: "Foreign exchange reserves management"
+    chair: "Chia Der Jiun"
+    next_meeting: "2026-10-14"
+    meetings_schedule:
+      - "2026-10-14"
+      - "2027-04-14"
+      - "2027-10-14"
+    primary_fx_pair: "USDSGD=X"
+    fx_pair_display: "USD/SGD"
+    summary: "Uses the exchange rate (S$NEER) rather than interest rates as its primary monetary tool. Maintains a modest appreciating slope to import disinflation."
+    key_drivers:
+      - "Singapore core CPI inflation"
+      - "Global trade and electronics/semiconductor cycle"
+      - "Regional ASEAN capital flows"
+    fx_implication: "SGD remains one of the strongest Asian currencies due to deliberate structural appreciation of the S$NEER band."

@@ -1,4 +1,4 @@
-"""End-to-end test suite for the Market Scan Macro & Swing Trading Engine."""
+"""End-to-end test suite for the Market Scan Macro, Central Banks & Swing Trading Engine."""
 import sys
 from pathlib import Path
 
@@ -6,11 +6,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import yaml
-from regime import calculate_macro_regime
+from central_banks import get_central_banks_report
 from early_signals import scan_early_signals
-from swing_screener import scan_swing_trades, generate_trade_chart
-from metrics import calculate_rsi, calculate_atr, calculate_bollinger_bands
+from metrics import calculate_atr, calculate_bollinger_bands, calculate_rsi
+from regime import calculate_macro_regime
 from storage import get_connection, get_prices
+from swing_screener import generate_trade_chart, scan_swing_trades
 
 
 def main():
@@ -27,6 +28,17 @@ def main():
     print(f"Key Cross-Asset Ratios count: {len(regime.cross_asset_ratios)}")
     assert regime.quadrant_name is not None
     assert len(regime.asset_implications) > 0
+
+    print("\n========================================")
+    print("TESTING CENTRAL BANKS & RATES MODULE...")
+    print("========================================")
+    cb_report = get_central_banks_report(conn)
+    print(f"Tracked Central Banks: {len(cb_report.banks)}")
+    assert len(cb_report.banks) >= 8
+    assert cb_report.next_upcoming_meeting is not None
+    print(f"Next Upcoming Meeting: {cb_report.next_upcoming_meeting.bank_name} on {cb_report.next_upcoming_meeting.meeting_date} (in {cb_report.next_upcoming_meeting.days_left} days)")
+    print(f"Total Upcoming Scheduled Meetings: {len(cb_report.all_upcoming_meetings)}")
+    print("Policy Matrix Rows:", len(cb_report.policy_matrix))
 
     print("\n========================================")
     print("TESTING EARLY WARNING & DIVERGENCE RADAR...")
@@ -69,7 +81,7 @@ def main():
         print(f"Plotly chart generated successfully ({len(fig.data)} traces).")
 
     conn.close()
-    print("\n>>> ALL ENGINE TESTS PASSED SUCCESSFULLY! <<<")
+    print("\n>>> ALL ENGINE & CENTRAL BANK TESTS PASSED SUCCESSFULLY! <<<")
 
 
 if __name__ == "__main__":
