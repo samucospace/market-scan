@@ -23,8 +23,22 @@ from metrics import (
     pct_change,
 )
 from regime import calculate_macro_regime
-from storage import get_connection, get_db_last_write_time, get_prices
-from swing_screener import generate_trade_chart, scan_swing_trades
+from storage import (
+    delete_saved_trade,
+    get_connection,
+    get_db_last_write_time,
+    get_prices,
+    get_saved_trades,
+    is_trade_saved_and_active,
+    reopen_saved_trade,
+    save_trade,
+    update_trade_exit,
+)
+from swing_screener import (
+    evaluate_live_trade_invalidation,
+    generate_trade_chart,
+    scan_swing_trades,
+)
 
 WATCHLIST_PATH = Path(__file__).resolve().parent.parent / "config" / "watchlist.yaml"
 
@@ -209,8 +223,9 @@ st.divider()
 # -------------------------------------------------------------
 # Main Application Tabs
 # -------------------------------------------------------------
-tab_swing, tab_macro, tab_cb, tab_signals, tab_watchlist, tab_screener, tab_news = st.tabs([
+tab_swing, tab_saved, tab_macro, tab_cb, tab_signals, tab_watchlist, tab_screener, tab_news = st.tabs([
     "🎯 Top 3 Swing Trades",
+    "💼 Saved Trades",
     "🌐 Market Regime & Macro Matrix",
     "🏛️ Central Banks & Rates",
     "⚡ Early Signs & Inflection Radar",
@@ -245,9 +260,11 @@ with tab_swing:
     if not screener_result.top_3_trades:
         st.info("No high-conviction swing setups matching current criteria. Explore the 'All Setups Screener' tab.")
     else:
+        conn_check = get_connection()
         for idx, trade in enumerate(screener_result.top_3_trades, start=1):
+            is_saved = is_trade_saved_and_active(conn_check, trade.ticker, trade.direction)
             with st.container(border=True):
-                col_head1, col_head2 = st.columns([3, 1])
+                col_head1, col_head2, col_save = st.columns([3, 1.2, 1.2])
                 with col_head1:
                     dir_color = "#10b981" if trade.direction == "LONG" else "#ef4444"
                     st.markdown(
@@ -261,6 +278,18 @@ with tab_swing:
                         value=f"{trade.conviction_score:.0f} / 100",
                         delta=f"R:R {trade.risk_reward_ratio:.2f}:1",
                     )
+                with col_save:
+                    st.markdown("<div style='margin-top: 10px;'>", unsafe_allow_html=True)
+                    if is_saved:
+                        st.success("📌 Tracked", icon="✅")
+                    else:
+                        if st.button("💾 Save Trade", key=f"save_top_{idx}_{trade.ticker}_{trade.direction}", type="primary", use_container_width=True):
+                            conn_w = get_connection()
+                            save_trade(conn_w, trade)
+                            conn_w.close()
+                            st.toast(f"Trade {trade.direction} {trade.ticker} saved to Tracker!", icon="💾")
+                            st.rerun()
+                    st.markdown("</div>", unsafe_allow_html=True)
 
                 # Metrics Grid
                 m1, m2, m3, m4, m5 = st.columns(5)
@@ -294,12 +323,302 @@ with tab_swing:
                     """)
 
                 # Plotly Interactive Chart
-                conn = get_connection()
-                prices = get_prices(conn, trade.ticker)
-                conn.close()
+                prices = get_prices(conn_check, trade.ticker)
                 if not prices.empty:
                     fig = generate_trade_chart(prices, trade)
                     st.plotly_chart(fig, use_container_width=True)
+        conn_check.close()
+
+# =============================================================
+# TAB 2: Saved Trades Tracker & Performance Journal
+# =============================================================
+with tab_saved:
+    st.subheader("💼 Saved Trades Tracker & Performance Journal")
+    st.caption("Active monitoring of saved swing trades with real-time rule & indicator invalidation calculation, live P&L, and archived exits.")
+
+    with st.expander("📖 How the Saved Trades Tracker & Invalidation System Works", expanded=False):
+        st.markdown(r"""
+        ### Live Invalidation & Trade Management Rules
+        - **Persistent Session Storage:** Saved setups are stored in SQLite and persist indefinitely across dashboard sessions and server restarts.
+        - **Real-Time Invalidation Engine:** Every time this tab loads, the engine fetches the latest price history and computes live indicators:
+          1. **Stop Loss Violation:** If the daily close or low/high breaches the stop loss level, a high-priority `🚨 INVALIDATED` alert is triggered.
+          2. **Archetype/Indicator Breakdown:** 
+             - *Trend Pullbacks:* Evaluates if price falls below the 50-day SMA or if RSI drops below the 36.0 pullback support threshold.
+             - *Volatility Breakouts:* Checks if price falls back inside the 20-day SMA Bollinger middle band, nullifying the breakout momentum.
+             - *Mean Reversions:* Evaluates if the 20-day SMA snapback target has been reached.
+          3. **Target 1 / Target 2 Milestones:** Identifies when Target 1 (+50% take profit) is hit, prompting stop trailing to breakeven.
+        - **Recording Exits:** Use the *Record Trade Exit* form on any active trade. Once exited, the trade is timestamped, its realized P&L is calculated, and it automatically shifts to the **Archived Exits** section at the bottom in greyed-out format.
+        """)
+
+    conn_saved = get_connection()
+    all_saved = get_saved_trades(conn_saved)
+    active_saved = [t for t in all_saved if t["status"] == "ACTIVE"]
+    exited_saved = [t for t in all_saved if t["status"] == "EXITED"]
+
+    # --- Summary Metrics Ribbon ---
+    if all_saved:
+        total_saved_cnt = len(all_saved)
+        num_act = len(active_saved)
+        num_ex = len(exited_saved)
+
+        wins = 0
+        realized_pnls = []
+        realized_rs = []
+        for et in exited_saved:
+            if et.get("exit_price") is not None and et.get("entry_price") is not None:
+                ep = float(et["entry_price"])
+                xp = float(et["exit_price"])
+                sl = float(et["stop_loss"])
+                dir_u = str(et["direction"]).upper()
+                if dir_u == "LONG":
+                    pnl_pct = (xp - ep) / ep * 100.0 if ep > 0 else 0.0
+                    risk_val = ep - sl
+                    r_val = (xp - ep) / risk_val if risk_val > 0 else 0.0
+                else:
+                    pnl_pct = (ep - xp) / ep * 100.0 if ep > 0 else 0.0
+                    risk_val = sl - ep
+                    r_val = (ep - xp) / risk_val if risk_val > 0 else 0.0
+                realized_pnls.append(pnl_pct)
+                realized_rs.append(r_val)
+                if pnl_pct > 0:
+                    wins += 1
+
+        win_rate = (wins / num_ex * 100.0) if num_ex > 0 else 0.0
+        tot_realized = sum(realized_pnls) if realized_pnls else 0.0
+        avg_r = (sum(realized_rs) / len(realized_rs)) if realized_rs else 0.0
+
+        active_evals = [evaluate_live_trade_invalidation(t, conn_saved) for t in active_saved]
+        tot_unrealized = sum(ev["unrealized_pnl_pct"] for ev in active_evals) if active_evals else 0.0
+        invalidated_count = sum(1 for ev in active_evals if ev["is_invalidated"])
+
+        skpi1, skpi2, skpi3, skpi4, skpi5 = st.columns(5)
+        with skpi1:
+            st.metric("Total Saved Trades", f"{total_saved_cnt}", f"{num_act} Active | {num_ex} Exited")
+        with skpi2:
+            unrealized_delta_color = "normal" if tot_unrealized >= 0 else "inverse"
+            st.metric("Active Unrealized Return", f"{tot_unrealized:+.2f}%", f"{num_act} Live Positions", delta_color=unrealized_delta_color)
+        with skpi3:
+            st.metric("Invalidated Setups", f"{invalidated_count} / {num_act}", "Requires immediate attention" if invalidated_count > 0 else "All live setups healthy", delta_color="inverse" if invalidated_count > 0 else "normal")
+        with skpi4:
+            st.metric("Realized Win Rate", f"{win_rate:.1f}%", f"{wins}/{num_ex} profitable exits" if num_ex > 0 else "No completed exits yet")
+        with skpi5:
+            st.metric("Total Realized Return", f"{tot_realized:+.2f}%", f"Avg {avg_r:+.2f}R per trade", delta_color="normal" if tot_realized >= 0 else "inverse")
+
+    st.divider()
+
+    # --- SECTION 1: Active Live Trades ---
+    st.markdown("### 🟢 Active Trades (Live Tracking & Invalidation Monitor)")
+    if not active_saved:
+        st.info("No active trades currently in tracker. Head to the **'🎯 Top 3 Swing Trades'** tab and click **'💾 Save Trade'** to start tracking setups.")
+    else:
+        for t_idx, trade in enumerate(active_saved, start=1):
+            eval_res = evaluate_live_trade_invalidation(trade, conn_saved)
+            trade_id = trade["id"]
+            ticker = trade["ticker"]
+            direction = trade["direction"]
+
+            with st.container(border=True):
+                # Header row
+                hdr_c1, hdr_c2 = st.columns([3, 2])
+                with hdr_c1:
+                    dir_color = "#10b981" if direction == "LONG" else "#ef4444"
+                    st.markdown(
+                        f"#### #{t_idx}: <span style='color:{dir_color}; font-weight:700'>{direction} {ticker}</span> — {trade['description']}",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        f"**Asset Class:** {trade['group_name']} | **Archetype:** `{trade['archetype']}` | "
+                        f"**Saved Date:** `{trade['created_at']}` | **Horizon:** `{trade['holding_period']}`"
+                    )
+
+                with hdr_c2:
+                    st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
+                    render_badge(eval_res["status_label"], eval_res["badge_bg"], eval_res["badge_txt"])
+                    st.caption(f"Conviction Score: **{trade['conviction_score']:.0f}/100** | Initial R:R: **{trade['risk_reward_ratio']:.2f}:1**")
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                # Invalidation Callout Box
+                if eval_res["is_invalidated"]:
+                    st.error(
+                        "🚨 **INVALIDATION TRIGGERED:** " + " • ".join(eval_res["reasons"]) +
+                        "\n\n*Action: Thesis is broken. Consider cutting the trade to protect capital.*"
+                    )
+                elif eval_res["status_flag"] == "TARGET_HIT":
+                    st.success(
+                        "🎯 **PROFIT TARGET MILESTONE:** " + " • ".join(eval_res["reasons"]) +
+                        "\n\n*Action: Secure 50% profits and move stop loss to breakeven.*"
+                    )
+                elif eval_res["status_flag"] == "WARNING":
+                    st.warning(
+                        "⚠️ **CAUTION / NEAR STOP LOSS:** " + " • ".join(eval_res["reasons"])
+                    )
+                else:
+                    st.info(
+                        "✅ **TRADE THESIS HEALTHY:** " + " • ".join(eval_res["reasons"])
+                    )
+
+                # Performance and Target Metrics Grid
+                pm1, pm2, pm3, pm4, pm5, pm6 = st.columns(6)
+                pm1.metric("Entry Price", f"{float(trade['entry_price']):.4f}")
+                pm2.metric("Current Price", f"{eval_res['current_price']:.4f}")
+                pnl_color = "normal" if eval_res["unrealized_pnl_pct"] >= 0 else "inverse"
+                pm3.metric("Unrealized P&L", f"{eval_res['unrealized_pnl_pct']:+.2f}%", f"{eval_res['unrealized_r']:+.2f}R", delta_color=pnl_color)
+                pm4.metric("Stop Loss", f"{float(trade['stop_loss']):.4f}", f"Dist: {eval_res['distance_to_sl_pct']:+.1f}%", delta_color="inverse")
+                pm5.metric("Target 1 (50% TP)", f"{float(trade['target_1']):.4f}", f"Dist: {eval_res['distance_to_t1_pct']:+.1f}%")
+                pm6.metric("Target 2 (Runner)", f"{float(trade['target_2']):.4f}")
+
+                # Detailed Rationale & Indicator Deep Dive
+                with st.expander(f"📖 Rationale, Rules & Indicators for {direction} {ticker}", expanded=False):
+                    col_det1, col_det2 = st.columns(2)
+                    with col_det1:
+                        st.markdown("**Macro & Technical Rationale:**")
+                        st.info(f"🌐 **Macro Thesis:** {trade['macro_thesis']}\n\n📈 **Technical Catalyst:** {trade['technical_thesis']}")
+                    with col_det2:
+                        st.markdown("**Trade Management & Risk Controls:**")
+                        st.warning(
+                            f"🛡️ **Invalidation Rule:** {trade['invalidation_rules']}\n\n"
+                            f"📊 **Live Indicators:** RSI (14) = `{eval_res['latest_rsi']:.1f}` (Initial: `{trade.get('initial_rsi', 0):.1f}`) | "
+                            f"20 SMA = `{eval_res['latest_sma20']:.4f}` | 50 SMA = `{eval_res['latest_sma50']:.4f}`"
+                        )
+
+                # Technical Chart Expander
+                with st.expander(f"📊 Interactive Chart for {ticker}", expanded=False):
+                    prices_t = get_prices(conn_saved, ticker)
+                    if not prices_t.empty:
+                        fig_t = generate_trade_chart(prices_t, trade)
+                        st.plotly_chart(fig_t, use_container_width=True, key=f"chart_active_{trade_id}")
+
+                # Record Exit Form & Delete Option
+                st.markdown("---")
+                col_exit_exp, col_del = st.columns([4, 1])
+                with col_exit_exp:
+                    with st.expander(f"🚪 Record Trade Exit & Move to Archive", expanded=False):
+                        with st.form(key=f"exit_form_{trade_id}"):
+                            st.markdown(f"**Close Position & Record Realized Return for {direction} {ticker}**")
+                            ef_c1, ef_c2 = st.columns(2)
+                            with ef_c1:
+                                exit_px_val = st.number_input(
+                                    "Actual Exit Price",
+                                    value=float(eval_res["current_price"]),
+                                    format="%.4f",
+                                    step=0.0001,
+                                    key=f"exit_px_{trade_id}",
+                                )
+                            with ef_c2:
+                                exit_date_val = st.date_input(
+                                    "Exit Date",
+                                    value=date.today(),
+                                    key=f"exit_dt_{trade_id}",
+                                )
+                            exit_notes_val = st.text_input(
+                                "Exit Reason & Review Notes",
+                                placeholder="e.g. Target 1 reached (+4.0%), Stopped out at $SL, Manual exit upon macro shift...",
+                                key=f"exit_notes_{trade_id}",
+                            )
+                            submit_exit = st.form_submit_button("✅ Confirm & Close Trade", type="primary")
+                            if submit_exit:
+                                conn_wr = get_connection()
+                                update_trade_exit(
+                                    conn_wr,
+                                    trade_id=trade_id,
+                                    exit_price=exit_px_val,
+                                    exit_date=exit_date_val.strftime("%Y-%m-%d"),
+                                    exit_notes=exit_notes_val,
+                                )
+                                conn_wr.close()
+                                st.toast(f"Trade #{trade_id} ({ticker}) recorded as EXITED and moved to archive!", icon="🚪")
+                                st.rerun()
+
+                with col_del:
+                    st.markdown("<div style='margin-top: 5px;'>", unsafe_allow_html=True)
+                    if st.button("🗑️ Delete", key=f"del_active_{trade_id}", help="Permanently remove from tracker"):
+                        conn_wr = get_connection()
+                        delete_saved_trade(conn_wr, trade_id)
+                        conn_wr.close()
+                        st.toast(f"Trade #{trade_id} deleted.", icon="🗑️")
+                        st.rerun()
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+    # --- SECTION 2: Exited Trades (Moved to Bottom & Greyed Out) ---
+    st.divider()
+    st.markdown("### ⚪ Exited & Archived Trades")
+    st.caption("Completed trades with finalized exit prices, realized returns, and post-trade notes.")
+
+    if not exited_saved:
+        st.info("No exited trades yet. When you record an exit price on an active trade above, it will automatically shift here to the bottom.")
+    else:
+        for ex_idx, ex_trade in enumerate(exited_saved, start=1):
+            ex_id = ex_trade["id"]
+            ex_ticker = ex_trade["ticker"]
+            ex_dir = ex_trade["direction"]
+            entry_px = float(ex_trade["entry_price"])
+            exit_px = float(ex_trade["exit_price"] or entry_px)
+            sl_px = float(ex_trade["stop_loss"])
+
+            if ex_dir == "LONG":
+                realized_pct = (exit_px - entry_px) / entry_px * 100.0 if entry_px > 0 else 0.0
+                risk_amt = entry_px - sl_px
+                realized_r = (exit_px - entry_px) / risk_amt if risk_amt > 0 else 0.0
+            else:
+                realized_pct = (entry_px - exit_px) / entry_px * 100.0 if entry_px > 0 else 0.0
+                risk_amt = sl_px - entry_px
+                realized_r = (entry_px - exit_px) / risk_amt if risk_amt > 0 else 0.0
+
+            ret_color = "#10b981" if realized_pct >= 0 else "#ef4444"
+            ret_bg = "#ecfdf5" if realized_pct >= 0 else "#fef2f2"
+
+            # Greyed-out visual container
+            with st.container(border=True):
+                ex_h1, ex_h2 = st.columns([3, 2])
+                with ex_h1:
+                    st.markdown(
+                        f"##### <span style='color:#64748b;'>⚪ [EXITED]</span> {ex_dir} {ex_ticker} — {ex_trade['description']}",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        f"**Asset:** {ex_trade['group_name']} | **Archetype:** `{ex_trade['archetype']}` | "
+                        f"**Entry Date:** `{ex_trade['created_at'].split()[0]}` → **Exit Date:** `{ex_trade.get('exit_date', 'N/A')}`"
+                    )
+                with ex_h2:
+                    st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
+                    render_badge(f"Realized: {realized_pct:+.2f}% ({realized_r:+.2f}R)", ret_bg, ret_color)
+                    st.caption(f"Entry: **{entry_px:.4f}** → Exit: **{exit_px:.4f}**")
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                if ex_trade.get("exit_notes"):
+                    st.info(f"📝 **Exit Review Notes:** {ex_trade['exit_notes']}")
+
+                with st.expander(f"🔍 Archived Setup Blueprint for {ex_dir} {ex_ticker}", expanded=False):
+                    m_ex1, m_ex2, m_ex3, m_ex4 = st.columns(4)
+                    m_ex1.metric("Entry Price", f"{entry_px:.4f}")
+                    m_ex1.caption(f"Zone: {ex_trade['entry_zone']}")
+                    m_ex2.metric("Exit Price", f"{exit_px:.4f}")
+                    m_ex2.caption(f"Date: {ex_trade.get('exit_date', 'N/A')}")
+                    m_ex3.metric("Stop Loss", f"{sl_px:.4f}")
+                    m_ex4.metric("Target 1", f"{float(ex_trade['target_1']):.4f}")
+
+                    st.markdown(f"**Macro Thesis:** {ex_trade['macro_thesis']}")
+                    st.markdown(f"**Technical Catalyst:** {ex_trade['technical_thesis']}")
+                    st.markdown(f"**Invalidation Rule:** {ex_trade['invalidation_rules']}")
+
+                # Bottom actions for exited trade
+                ex_act1, ex_act2, _ = st.columns([1, 1, 3])
+                with ex_act1:
+                    if st.button("🔄 Reopen", key=f"reopen_{ex_id}", help="Reopen trade back to Active monitoring"):
+                        conn_wr = get_connection()
+                        reopen_saved_trade(conn_wr, ex_id)
+                        conn_wr.close()
+                        st.toast(f"Trade #{ex_id} ({ex_ticker}) reopened to Active!", icon="🔄")
+                        st.rerun()
+                with ex_act2:
+                    if st.button("🗑️ Delete", key=f"del_ex_{ex_id}", help="Permanently delete from database"):
+                        conn_wr = get_connection()
+                        delete_saved_trade(conn_wr, ex_id)
+                        conn_wr.close()
+                        st.toast(f"Trade #{ex_id} deleted.", icon="🗑️")
+                        st.rerun()
+
+    conn_saved.close()
 
 # =============================================================
 # TAB 2: Market Regime & Macro Matrix

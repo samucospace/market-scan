@@ -407,13 +407,27 @@ def scan_swing_trades(
     )
 
 
-def generate_trade_chart(prices: pd.DataFrame, setup: SwingTradeSetup) -> go.Figure:
+def generate_trade_chart(prices: pd.DataFrame, setup: Any) -> go.Figure:
     """Generate an interactive Plotly chart with Bollinger bands, moving averages,
     and visual trade execution levels (Entry, Stop Loss, Target 1, Target 2).
+    Accepts SwingTradeSetup dataclass or dict.
     """
     df = prices.tail(65).copy()
     if df.empty:
         return go.Figure()
+
+    # Extract fields regardless of dict or object
+    ticker = getattr(setup, "ticker", None) or (setup.get("ticker") if isinstance(setup, dict) else "")
+    description = getattr(setup, "description", None) or (setup.get("description") if isinstance(setup, dict) else "")
+    direction = getattr(setup, "direction", None) or (setup.get("direction") if isinstance(setup, dict) else "LONG")
+    archetype = getattr(setup, "archetype", None) or (setup.get("archetype") if isinstance(setup, dict) else "")
+    entry_price = float(getattr(setup, "entry_price", None) or (setup.get("entry_price") if isinstance(setup, dict) else 0.0))
+    stop_loss = float(getattr(setup, "stop_loss", None) or (setup.get("stop_loss") if isinstance(setup, dict) else 0.0))
+    target_1 = float(getattr(setup, "target_1", None) or (setup.get("target_1") if isinstance(setup, dict) else 0.0))
+    target_2 = float(getattr(setup, "target_2", None) or (setup.get("target_2") if isinstance(setup, dict) else 0.0))
+    risk_pct = float(getattr(setup, "risk_pct", None) or (setup.get("risk_pct") if isinstance(setup, dict) else 0.0))
+    reward_pct = float(getattr(setup, "reward_pct", None) or (setup.get("reward_pct") if isinstance(setup, dict) else 0.0))
+    risk_reward_ratio = float(getattr(setup, "risk_reward_ratio", None) or (setup.get("risk_reward_ratio") if isinstance(setup, dict) else 2.0))
 
     # Calculate indicators over the chart window
     closes = prices["close"].dropna()
@@ -456,7 +470,7 @@ def generate_trade_chart(prices: pd.DataFrame, setup: SwingTradeSetup) -> go.Fig
             high=df["high"],
             low=df["low"],
             close=df["close"],
-            name=setup.ticker,
+            name=ticker,
             increasing_line_color="#10b981",
             decreasing_line_color="#ef4444",
         ))
@@ -485,47 +499,228 @@ def generate_trade_chart(prices: pd.DataFrame, setup: SwingTradeSetup) -> go.Fig
     # Trade Levels Lines
     # Entry
     fig.add_hline(
-        y=setup.entry_price,
+        y=entry_price,
         line_dash="dash",
         line_color="#3b82f6",
         line_width=1.5,
-        annotation_text=f"Entry: {setup.entry_price:.4f}",
+        annotation_text=f"Entry: {entry_price:.4f}",
         annotation_position="top right",
     )
     # Stop Loss
     fig.add_hline(
-        y=setup.stop_loss,
+        y=stop_loss,
         line_dash="dot",
         line_color="#ef4444",
         line_width=2.0,
-        annotation_text=f"Stop Loss: {setup.stop_loss:.4f} (-{setup.risk_pct:.1f}%)",
+        annotation_text=f"Stop Loss: {stop_loss:.4f} (-{risk_pct:.1f}%)",
         annotation_position="bottom right",
     )
     # Target 1
     fig.add_hline(
-        y=setup.target_1,
+        y=target_1,
         line_dash="dash",
         line_color="#10b981",
         line_width=2.0,
-        annotation_text=f"Target 1: {setup.target_1:.4f} (+{setup.reward_pct:.1f}%)",
+        annotation_text=f"Target 1: {target_1:.4f} (+{reward_pct:.1f}%)",
         annotation_position="top right",
     )
     # Target 2
-    fig.add_hline(
-        y=setup.target_2,
-        line_dash="dashdot",
-        line_color="#059669",
-        line_width=1.5,
-        annotation_text=f"Target 2: {setup.target_2:.4f}",
-        annotation_position="top right",
-    )
+    if target_2 > 0:
+        fig.add_hline(
+            y=target_2,
+            line_dash="dashdot",
+            line_color="#059669",
+            line_width=1.5,
+            annotation_text=f"Target 2: {target_2:.4f}",
+            annotation_position="top right",
+        )
 
     fig.update_layout(
-        title=f"{setup.direction} {setup.ticker} ({setup.description}) — {setup.archetype} Setup (R:R {setup.risk_reward_ratio}:1)",
-        height=400,
+        title=f"{direction} {ticker} ({description}) — {archetype} Setup (R:R {risk_reward_ratio}:1)",
+        height=380,
         margin=dict(l=30, r=30, t=40, b=25),
         xaxis_rangeslider_visible=False,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         template="plotly_white",
     )
     return fig
+
+
+def evaluate_live_trade_invalidation(
+    trade: dict | Any,
+    conn: sqlite3.Connection,
+) -> dict:
+    """Evaluate real-time live performance, stop loss invalidation, indicator invalidation,
+    and target hits for an active saved trade.
+    """
+    ticker = getattr(trade, "ticker", None) or (trade.get("ticker") if isinstance(trade, dict) else "")
+    direction = str(getattr(trade, "direction", None) or (trade.get("direction") if isinstance(trade, dict) else "LONG")).upper()
+    archetype = str(getattr(trade, "archetype", None) or (trade.get("archetype") if isinstance(trade, dict) else ""))
+    entry_price = float(getattr(trade, "entry_price", None) or (trade.get("entry_price") if isinstance(trade, dict) else 0.0))
+    stop_loss = float(getattr(trade, "stop_loss", None) or (trade.get("stop_loss") if isinstance(trade, dict) else 0.0))
+    target_1 = float(getattr(trade, "target_1", None) or (trade.get("target_1") if isinstance(trade, dict) else 0.0))
+    target_2 = float(getattr(trade, "target_2", None) or (trade.get("target_2") if isinstance(trade, dict) else 0.0))
+    invalidation_rules = str(getattr(trade, "invalidation_rules", None) or (trade.get("invalidation_rules") if isinstance(trade, dict) else ""))
+
+    prices = get_prices(conn, ticker)
+    if prices.empty or len(prices) < 20:
+        return {
+            "status_flag": "UNKNOWN",
+            "status_label": "⚪ UNKNOWN DATA",
+            "is_invalidated": False,
+            "badge_bg": "#f3f4f6",
+            "badge_txt": "#4b5563",
+            "current_price": entry_price,
+            "unrealized_pnl_pct": 0.0,
+            "unrealized_r": 0.0,
+            "distance_to_sl_pct": 0.0,
+            "distance_to_t1_pct": 0.0,
+            "latest_rsi": 50.0,
+            "latest_sma20": entry_price,
+            "latest_sma50": entry_price,
+            "reasons": ["No current price history available in database."],
+        }
+
+    closes = prices["close"].dropna()
+    current_px = float(closes.iloc[-1])
+    current_high = float(prices["high"].iloc[-1]) if "high" in prices.columns else current_px
+    current_low = float(prices["low"].iloc[-1]) if "low" in prices.columns else current_px
+
+    rsi = calculate_rsi(prices, 14) or 50.0
+    sma20 = calculate_sma(prices, 20) or current_px
+    sma50 = calculate_sma(prices, 50) or current_px
+    ema20 = calculate_ema(prices, 20) or current_px
+    bb = calculate_bollinger_bands(prices, 20, 2.0)
+    bandwidth = bb.get("bandwidth", 5.0)
+
+    # Performance calculations
+    if direction == "LONG":
+        unrealized_pnl_pct = (current_px - entry_price) / entry_price * 100.0 if entry_price > 0 else 0.0
+        initial_risk = entry_price - stop_loss
+        unrealized_r = (current_px - entry_price) / initial_risk if initial_risk > 0 else 0.0
+        dist_to_sl_pct = (current_px - stop_loss) / current_px * 100.0 if current_px > 0 else 0.0
+        dist_to_t1_pct = (target_1 - current_px) / current_px * 100.0 if current_px > 0 else 0.0
+    else:
+        unrealized_pnl_pct = (entry_price - current_px) / entry_price * 100.0 if entry_price > 0 else 0.0
+        initial_risk = stop_loss - entry_price
+        unrealized_r = (entry_price - current_px) / initial_risk if initial_risk > 0 else 0.0
+        dist_to_sl_pct = (stop_loss - current_px) / current_px * 100.0 if current_px > 0 else 0.0
+        dist_to_t1_pct = (current_px - target_1) / current_px * 100.0 if current_px > 0 else 0.0
+
+    invalidation_reasons = []
+    target_reasons = []
+    warning_reasons = []
+    healthy_reasons = []
+
+    # 1. Check Stop Loss Invalidation
+    if direction == "LONG":
+        if current_px <= stop_loss:
+            invalidation_reasons.append(f"Daily close (${current_px:.4f}) breached Stop Loss level (${stop_loss:.4f}).")
+        elif current_low <= stop_loss:
+            warning_reasons.append(f"Daily low (${current_low:.4f}) tagged Stop Loss (${stop_loss:.4f}), close (${current_px:.4f}) currently above.")
+    else:
+        if current_px >= stop_loss:
+            invalidation_reasons.append(f"Daily close (${current_px:.4f}) breached Stop Loss level (${stop_loss:.4f}).")
+        elif current_high >= stop_loss:
+            warning_reasons.append(f"Daily high (${current_high:.4f}) tagged Stop Loss (${stop_loss:.4f}), close (${current_px:.4f}) currently below.")
+
+    # 2. Check Indicator & Archetype-specific Invalidation
+    if "Pullback" in archetype:
+        if direction == "LONG":
+            if current_px < sma50:
+                invalidation_reasons.append(f"Price broke below primary trend 50 SMA (${sma50:.4f}).")
+            if rsi < 36.0:
+                invalidation_reasons.append(f"RSI collapsed to {rsi:.1f} (below pullback support floor 36.0).")
+            elif 40.0 <= rsi <= 60.0:
+                healthy_reasons.append(f"RSI ({rsi:.1f}) is holding within ideal pullback zone (40-60).")
+        else:
+            if current_px > sma50:
+                invalidation_reasons.append(f"Price climbed above primary downtrend 50 SMA (${sma50:.4f}).")
+            if rsi > 64.0:
+                invalidation_reasons.append(f"RSI surged to {rsi:.1f} (above short invalidation ceiling 64.0).")
+            elif 40.0 <= rsi <= 60.0:
+                healthy_reasons.append(f"RSI ({rsi:.1f}) is holding within ideal short bounce zone.")
+
+    elif "Breakout" in archetype:
+        if direction == "LONG":
+            if current_px < sma20:
+                invalidation_reasons.append(f"Price fell back below 20 SMA mid-band (${sma20:.4f}), breaking breakout momentum.")
+            else:
+                healthy_reasons.append(f"Price is sustaining above 20 SMA mid-band (${sma20:.4f}).")
+        else:
+            if current_px > sma20:
+                invalidation_reasons.append(f"Price rose back above 20 SMA mid-band (${sma20:.4f}), breaking breakdown momentum.")
+            else:
+                healthy_reasons.append(f"Price is sustaining below 20 SMA mid-band (${sma20:.4f}).")
+
+    elif "Mean Reversion" in archetype:
+        if direction == "LONG":
+            if current_px >= sma20:
+                target_reasons.append(f"20 SMA Mean Reversion target reached (${sma20:.4f}).")
+            if rsi < 24.0:
+                warning_reasons.append(f"Severe breakdown momentum with RSI at {rsi:.1f}.")
+        else:
+            if current_px <= sma20:
+                target_reasons.append(f"20 SMA Mean Reversion target reached (${sma20:.4f}).")
+            if rsi > 76.0:
+                warning_reasons.append(f"Severe overbought extension with RSI at {rsi:.1f}.")
+
+    # 3. Check Target Milestones
+    if direction == "LONG":
+        if target_2 > 0 and (current_high >= target_2 or current_px >= target_2):
+            target_reasons.append(f"🎉 Target 2 Runner reached (${target_2:.4f}).")
+        elif target_1 > 0 and (current_high >= target_1 or current_px >= target_1):
+            target_reasons.append(f"🎯 Target 1 reached (${target_1:.4f}) — Lock 50% profit and trail stop to breakeven (${entry_price:.4f}).")
+    else:
+        if target_2 > 0 and (current_low <= target_2 or current_px <= target_2):
+            target_reasons.append(f"🎉 Target 2 Runner reached (${target_2:.4f}).")
+        elif target_1 > 0 and (current_low <= target_1 or current_px <= target_1):
+            target_reasons.append(f"🎯 Target 1 reached (${target_1:.4f}) — Lock 50% profit and trail stop to breakeven (${entry_price:.4f}).")
+
+    # 4. Synthesize Status
+    if invalidation_reasons:
+        status_flag = "INVALIDATED"
+        status_label = "🚨 INVALIDATED"
+        is_invalidated = True
+        badge_bg = "#fee2e2"
+        badge_txt = "#991b1b"
+        reasons = invalidation_reasons + warning_reasons
+    elif target_reasons:
+        status_flag = "TARGET_HIT"
+        status_label = "🎯 TARGET HIT"
+        is_invalidated = False
+        badge_bg = "#d1fae5"
+        badge_txt = "#065f46"
+        reasons = target_reasons + healthy_reasons
+    elif dist_to_sl_pct < 0.6 or warning_reasons:
+        status_flag = "WARNING"
+        status_label = "⚠️ NEAR STOP / CAUTION"
+        is_invalidated = False
+        badge_bg = "#fef3c7"
+        badge_txt = "#92400e"
+        reasons = warning_reasons or [f"Price is within {dist_to_sl_pct:.1f}% of Stop Loss."]
+    else:
+        status_flag = "VALID"
+        status_label = "✅ THESIS VALID & ACTIVE"
+        is_invalidated = False
+        badge_bg = "#ecfdf5"
+        badge_txt = "#047857"
+        reasons = healthy_reasons or [f"Setup is operating within expected risk boundaries. Distance to SL: {dist_to_sl_pct:+.1f}%."]
+
+    return {
+        "status_flag": status_flag,
+        "status_label": status_label,
+        "is_invalidated": is_invalidated,
+        "badge_bg": badge_bg,
+        "badge_txt": badge_txt,
+        "current_price": round(current_px, 4),
+        "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
+        "unrealized_r": round(unrealized_r, 2),
+        "distance_to_sl_pct": round(dist_to_sl_pct, 2),
+        "distance_to_t1_pct": round(dist_to_t1_pct, 2),
+        "latest_rsi": round(rsi, 1),
+        "latest_sma20": round(sma20, 4),
+        "latest_sma50": round(sma50, 4),
+        "reasons": reasons,
+    }
+
