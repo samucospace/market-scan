@@ -16,6 +16,7 @@ import yaml
 from central_banks import get_central_banks_report
 from early_signals import scan_early_signals
 from metrics import (
+    calculate_price_vs_sma,
     calculate_rsi,
     calculate_sma,
     last_close,
@@ -41,6 +42,15 @@ from swing_screener import (
 )
 
 WATCHLIST_PATH = Path(__file__).resolve().parent.parent / "config" / "watchlist.yaml"
+JPY_STRENGTH_PAIRS = {
+    "AUDJPY=X": ("AUD", "#10b981"),
+    "EURJPY=X": ("EUR", "#3b82f6"),
+    "USDJPY=X": ("USD", "#ef4444"),
+    "NZDJPY=X": ("NZD", "#d946ef"),
+    "CHFJPY=X": ("CHF", "#64748b"),
+    "GBPJPY=X": ("GBP", "#eab308"),
+    "CADJPY=X": ("CAD", "#06b6d4"),
+}
 
 st.set_page_config(
     page_title="Market Scan — Macro Regime, Central Banks & Swing Trading",
@@ -86,6 +96,27 @@ def build_table(period: str) -> pd.DataFrame:
     conn.close()
     df = pd.DataFrame(records)
     return df.sort_values("% Change", ascending=False, na_position="last")
+
+
+@st.cache_data(ttl=300)
+def build_jpy_strength_data() -> tuple[pd.DataFrame, list[str]]:
+    conn = get_connection()
+    series = {}
+    missing_pairs = []
+    try:
+        for ticker, (currency, _) in JPY_STRENGTH_PAIRS.items():
+            prices = get_prices(conn, ticker)
+            strength = calculate_price_vs_sma(prices, window=200)
+            if strength.empty:
+                missing_pairs.append(ticker)
+                continue
+            series[currency] = strength.rename(currency)
+    finally:
+        conn.close()
+
+    if not series:
+        return pd.DataFrame(), missing_pairs
+    return pd.concat(series.values(), axis=1).sort_index(), missing_pairs
 
 
 def color_pct(val):
@@ -223,13 +254,14 @@ st.divider()
 # -------------------------------------------------------------
 # Main Application Tabs
 # -------------------------------------------------------------
-tab_swing, tab_saved, tab_macro, tab_cb, tab_signals, tab_watchlist, tab_screener, tab_news = st.tabs([
+tab_swing, tab_saved, tab_macro, tab_cb, tab_signals, tab_watchlist, tab_jpy_strength, tab_screener, tab_news = st.tabs([
     "🎯 Top 3 Swing Trades",
     "💼 Saved Trades",
     "🌐 Market Regime & Macro Matrix",
     "🏛️ Central Banks & Rates",
     "⚡ Early Signs & Inflection Radar",
     "📊 Watchlist & Group Rankings",
+    "💱 JPY Relative Strength",
     "🔍 All Setups Screener",
     "📰 Movers & Catalyst News",
 ])
@@ -908,7 +940,7 @@ with tab_signals:
         st.dataframe(div_df, hide_index=True, use_container_width=True)
 
         st.subheader("Market Breadth & Participation Health")
-        st.caption("Measures what percentage of the entire 59-asset universe is participating in the uptrend.")
+        st.caption("Measures what percentage of the entire 64-asset universe is participating in the uptrend.")
         b1, b2 = st.columns(2)
         b1.metric("% Watchlist > 20 SMA", f"{early_report.breadth.pct_above_sma20:.1f}%")
         b2.metric("% Watchlist > 50 SMA", f"{early_report.breadth.pct_above_sma50:.1f}%")
@@ -1014,10 +1046,68 @@ with tab_watchlist:
                             )
 
 # =============================================================
-# TAB 6: All Setups Screener
+# TAB 6: JPY Relative Strength
+# =============================================================
+with tab_jpy_strength:
+    st.subheader("Currency Strength vs JPY")
+    st.caption(
+        "Daily close relative to its 200-trading-day SMA: "
+        "(close - SMA 200) / close. Positive values are above the moving average."
+    )
+
+    strength_data, missing_pairs = build_jpy_strength_data()
+    if strength_data.empty:
+        st.warning(
+            "No indicator history is available yet. Run `python src/fetch.py` to fetch "
+            "the JPY crosses and their daily history."
+        )
+    else:
+        if missing_pairs:
+            st.info(
+                "No usable 200-day history for: "
+                + ", ".join(missing_pairs)
+                + ". Run `python src/fetch.py` to update market data."
+            )
+
+        fig_strength = go.Figure()
+        for ticker, (currency, color) in JPY_STRENGTH_PAIRS.items():
+            if currency not in strength_data:
+                continue
+            fig_strength.add_trace(go.Scatter(
+                x=strength_data.index,
+                y=strength_data[currency],
+                mode="lines",
+                name=currency,
+                line={"color": color, "width": 2},
+                hovertemplate="%{x|%Y-%m-%d}<br>%{y:.2%}<extra>%{fullData.name}</extra>",
+            ))
+        fig_strength.add_hline(y=0, line_color="#94a3b8", line_dash="dot", line_width=1)
+        fig_strength.update_layout(
+            height=600,
+            hovermode="x unified",
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
+            margin={"l": 20, "r": 20, "t": 20, "b": 20},
+            yaxis={"title": "Distance from 200-day SMA", "tickformat": ".1%", "zeroline": False},
+            xaxis={
+                "title": None,
+                "rangeselector": {
+                    "buttons": [
+                        {"count": 3, "label": "3M", "step": "month", "stepmode": "backward"},
+                        {"count": 6, "label": "6M", "step": "month", "stepmode": "backward"},
+                        {"count": 1, "label": "1Y", "step": "year", "stepmode": "backward"},
+                        {"step": "all", "label": "All"},
+                    ]
+                },
+                "rangeslider": {"visible": False},
+            },
+        )
+        st.plotly_chart(fig_strength, use_container_width=True)
+
+# =============================================================
+# TAB 7: All Setups Screener
 # =============================================================
 with tab_screener:
-    st.subheader("Quantitative Swing Trade Screener (All 59 Assets)")
+    st.subheader("Quantitative Swing Trade Screener (All 64 Assets)")
     st.caption("Filter and explore candidate setups across all three strategy archetypes.")
 
     with st.expander("🔍 Screener Metrics & Setup Evaluation Glossary", expanded=False):
@@ -1071,7 +1161,7 @@ with tab_screener:
         st.dataframe(full_df, hide_index=True, use_container_width=True, height=500)
 
 # =============================================================
-# TAB 7: Movers & Catalyst News
+# TAB 8: Movers & Catalyst News
 # =============================================================
 with tab_news:
     st.subheader("Top & Bottom Movers: Why They Moved")

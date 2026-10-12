@@ -32,8 +32,9 @@ the job.
 Stored in `config/watchlist.yaml`, grouped by asset class. This is the user's actual list, mapped
 from their original tickers (mixed TradingView/broker symbols) to Yahoo Finance equivalents — crypto
 (`BTCUSD`) excluded per instruction. Groups: **FX**, **Equity Indices**, **Commodities & Futures**,
-**US Government Bond Yields**, **Sector ETFs**. All 58 tickers confirmed live against Yahoo Finance
-via `scripts/verify_tickers.py`.
+**US Government Bond Yields**, **Sector ETFs**, and **Credit Proxies**. The original watchlist was
+checked against Yahoo Finance via `scripts/verify_tickers.py`; four JPY crosses were later added
+for the currency-strength indicator and should be checked with the same script.
 
 Notes on symbols that needed interpretation or were dropped (accepted as-is):
 - `CN1!` (China A50 futures) and `FEF1!`/`TIO1!` (iron ore futures) — dropped, no Yahoo equivalent available for free.
@@ -41,6 +42,7 @@ Notes on symbols that needed interpretation or were dropped (accepted as-is):
 - `IDX80` (Indonesia) — mapped to `^JKSE` (Jakarta Composite) as an approximation, not the same index.
 - `ME` — interpreted as Mexico, mapped to `^MXX`.
 - `TT1!` — interpreted as Cotton No. 2 futures (`CT=F`).
+- `EURJPY=X`, `NZDJPY=X`, `CHFJPY=X`, and `GBPJPY=X` — added to support the currency-strength indicator.
 - "Government bonds (1/3/5/10yr, US/China/AU/DE/NZ/CA)" — only **US** Treasury yields (`^IRX`, `^FVX`,
   `^TNX`, `^TYX`) are available free on Yahoo; non-US government bond yields have no good free source
   and are not included.
@@ -99,6 +101,8 @@ Percent changes are computed on read (not stored), so definitions can change wit
 - Optional click-through: selecting a row shows a small price line chart for that ticker (Streamlit
   session state + Plotly line chart).
 - A heatmap grid view can be added later as a second display mode once the ranked list is working.
+- JPY relative-strength tab charts AUDJPY, EURJPY, USDJPY, NZDJPY, CHFJPY, GBPJPY, and CADJPY using
+  `(close - 200-day SMA) / close` from stored daily closes.
 
 ## 7. Tech Stack Summary
 | Layer | Choice | Reason |
@@ -138,4 +142,4 @@ market-scan/
 ## 10. Open Questions for User
 - Should the dashboard run only locally (`streamlit run`) or do you want it reachable from your
   phone on your home network (`streamlit run --server.address 0.0.0.0`)?
-- Watchlist is finalized ([config/watchlist.yaml](config/watchlist.yaml), 58 tickers, all verified live) — ready to start the build.
+- The current watchlist ([config/watchlist.yaml](config/watchlist.yaml)) contains 64 tickers; verify any additions with `scripts/verify_tickers.py`.

@@ -19,7 +19,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Fetch Market Data
-Run the daily ingestion script to pull ~2 years of daily OHLCV history for all 59 tracked assets from Yahoo Finance into a local high-performance SQLite database:
+Run the daily ingestion script to pull ~2 years of daily OHLCV history for all 64 tracked assets from Yahoo Finance into a local high-performance SQLite database:
 ```bash
 python src/fetch.py
 ```
@@ -68,11 +68,15 @@ python -m streamlit run src/app.py
 - Ranked performance tables sorted by % change across Daily, Weekly, Monthly, and Quarterly timeframes.
 - Density toggle (*Compact*, *Balanced*, *Spacious*) and full Table View with integrated RSI and 20 SMA indicators.
 
-### 7. 🔍 All Setups Screener
-- Complete filterable table of all 59 watchlist assets.
+### 7. 💱 JPY Relative Strength
+- Daily chart of AUD, EUR, USD, NZD, CHF, GBP, and CAD against JPY.
+- Each line plots `(close - 200-day SMA) / close`, matching the supplied TradingView indicator, with selectable chart lookbacks.
+
+### 8. 🔍 All Setups Screener
+- Complete filterable table of all 64 watchlist assets.
 - Filter by Strategy Archetype (*Trend Pullback*, *Volatility Breakout*, *Mean Reversion*), Direction (*LONG*, *SHORT*), and minimum Conviction Score.
 
-### 8. 📰 Catalysts & Contextual News
+### 9. 📰 Catalysts & Contextual News
 - Integrated market news feed providing real-time macro catalysts and fundamental driver context for top gainers and decliners.
 
 ---
@@ -93,7 +97,7 @@ python scripts/test_saved_trades.py
 market-scan/
 ├── config/
 │   ├── central_banks.yaml    # Central bank rates, schedules, and FX drivers
-│   └── watchlist.yaml        # 59 cross-asset tickers grouped by asset class
+│   └── watchlist.yaml      # 64 cross-asset tickers grouped by asset class
 ├── data/
 │   └── market.db             # Local SQLite database (git-ignored)
 ├── scripts/

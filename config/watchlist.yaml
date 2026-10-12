@@ -9,6 +9,10 @@ groups:
     - { ticker: EURUSD=X, note: "EURUSD" }
     - { ticker: GBPUSD=X, note: "GBPUSD" }
     - { ticker: AUDJPY=X, note: "AUDJPY" }
+    - { ticker: EURJPY=X, note: "EURJPY" }
+    - { ticker: NZDJPY=X, note: "NZDJPY" }
+    - { ticker: CHFJPY=X, note: "CHFJPY" }
+    - { ticker: GBPJPY=X, note: "GBPJPY" }
     - { ticker: AUDSGD=X, note: "AUDSGD" }
     - { ticker: USDSGD=X, note: "USDSGD" }
     - { ticker: EURSGD=X, note: "EURSGD" }

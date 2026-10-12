@@ -99,6 +99,17 @@ def calculate_sma(prices: pd.DataFrame, window: int) -> float | None:
     return float(closes.tail(window).mean())
 
 
+def calculate_price_vs_sma(prices: pd.DataFrame, window: int = 200) -> pd.Series:
+    """Return (close - rolling SMA) / close, matching the supplied Pine indicator."""
+    if prices is None or prices.empty or "close" not in prices:
+        return pd.Series(dtype=float)
+    closes = prices["close"].dropna()
+    if window < 1:
+        raise ValueError("window must be a positive integer")
+    sma = closes.rolling(window=window, min_periods=window).mean()
+    return ((closes - sma) / closes.where(closes != 0)).dropna()
+
+
 def calculate_ema(prices: pd.DataFrame, window: int) -> float | None:
     """Calculate Exponential Moving Average for given window."""
     if prices is None or prices.empty or "close" not in prices:

@@ -1,6 +1,6 @@
 """Quantitative Swing Trade Screener & Setup Generator.
 
-Scans the 59-asset universe for high-probability swing trading setups
+Scans the 64-asset universe for high-probability swing trading setups
 tailored for 3-day to 3-week holding periods across three distinct archetypes:
 1. Trend Continuation & Pullback / Dip Buy (or Rip Sell)
 2. Volatility Compression Breakout
@@ -723,4 +723,3 @@ def evaluate_live_trade_invalidation(
         "latest_sma50": round(sma50, 4),
         "reasons": reasons,
     }
-
