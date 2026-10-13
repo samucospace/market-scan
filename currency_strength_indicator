@@ -1,0 +1,38 @@
+study(title="Relative Strength v JPY", precision=3)
+
+ma = sma(close, 200)
+
+maSec1 = security('AUDJPY', period, ma)
+maSec2 = security('EURJPY', period, ma)
+maSec3 = security('USDJPY', period, ma)
+maSec4 = security('NZDJPY', period, ma)
+maSec5 = security('CHFJPY', period, ma)
+maSec6 = security('GBPJPY', period, ma)
+maSec7 = security('CADJPY', period, ma)
+
+
+price2401 = security('AUDJPY', period, close)
+price2402 = security('EURJPY', period, close)
+price2403 = security('USDJPY', period, close)
+price2404 = security('NZDJPY', period, close)
+price2405 = security('CHFJPY', period, close)
+price2406 = security('GBPJPY', period, close)
+price2407 = security('CADJPY', period, close)
+
+strengthSec1 = ((price2401 - maSec1)/price2401)
+strengthSec2 = ((price2402 - maSec2)/price2402)
+strengthSec3 = ((price2403 - maSec3)/price2403)
+strengthSec4 = ((price2404 - maSec4)/price2404)
+strengthSec5 = ((price2405 - maSec5)/price2405)
+strengthSec6 = ((price2406 - maSec6)/price2406)
+strengthSec7 = ((price2407 - maSec7)/price2407)
+
+plot(strengthSec1, title='AUD', color=green, linewidth=2, style=line)
+plot(strengthSec2, title='EUR', color=blue, linewidth=2, style=line)
+plot(strengthSec3, title='USD', color=red, linewidth=2, style=line)
+plot(strengthSec4, title='NZD', color=fuchsia, linewidth=2, style=line)
+plot(strengthSec5, title='CHF', color=white, linewidth=2, style=line)
+plot(strengthSec6, title='GBP', color=yellow, linewidth=2, style=line)
+plot(strengthSec7, title='CAD', color=aqua, linewidth=2, style=line)
+
+
