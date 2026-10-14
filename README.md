@@ -56,8 +56,9 @@ Dashboard v2.0 (`src/app_v2.py`) provides an institutional multi-factor matrix a
 
 ### Dashboard v2.0 Tabs
 - **Tab 1: 📊 Tactical Ratings Table:** Live rating table, asset-class and stance filters, summary cards, and an interactive drill-down inspector with technical price charts.
-- **Tab 2: 💱 Currency Strength vs JPY:** TradingView Pine Script relative strength model `(close - 200 SMA) / close` for AUD, EUR, USD, NZD, CHF, GBP, and CAD with leaderboard rankings.
-- **Tab 3: 📘 Methodology & Logic Rules:** Complete, transparent institutional documentation detailing all formulas, cutoffs, and the full 12-asset $\times$ 4-quadrant response matrix for user auditing.
+- **Tab 2: 📈 10Y Yield Differentials & Rates:** Real-time global 10-year sovereign debt market rates (US, Germany, UK, Japan, Australia, Canada, NZ, Switzerland) with 10Y yield spreads (bps) for all watchlist FX pairs, 20-day spread momentum, central bank cash rate carry, and interactive dual-axis FX Spot vs. 10Y Yield Spread overlay charts.
+- **Tab 3: 💱 Currency Strength vs JPY:** TradingView Pine Script relative strength model `(close - 200 SMA) / close` for AUD, EUR, USD, NZD, CHF, GBP, and CAD with leaderboard rankings.
+- **Tab 4: 📘 Methodology & Logic Rules:** Complete, transparent institutional documentation detailing all formulas, cutoffs, 10Y sovereign yield differential mechanics, and the full 12-asset $\times$ 4-quadrant response matrix for user auditing.
 
 ---
 
@@ -111,10 +112,11 @@ Dashboard v2.0 (`src/app_v2.py`) provides an institutional multi-factor matrix a
 
 ## 🧪 Verification & Automated Testing
 
-To run the automated test suite verifying all quantitative models, central bank matrices, divergence radars, trade generation engines, and v2 tactical engine:
+To run the automated test suite verifying all quantitative models, central bank matrices, divergence radars, trade generation engines, sovereign yield differentials, and v2 tactical engine:
 ```bash
-# Dashboard v2.0 Tactical Engine Verification
+# Dashboard v2.0 Verification Suites
 python scripts/test_v2_engine.py
+python scripts/test_sovereign_yields.py
 
 # Dashboard v1.0 Engines Verification
 python scripts/test_engine.py
@@ -128,27 +130,29 @@ python scripts/test_saved_trades.py
 ```
 market-scan/
 ├── config/
-│   ├── central_banks.yaml    # Central bank rates, schedules, and FX drivers
-│   └── watchlist.yaml        # 64 cross-asset tickers grouped by asset class
+│   ├── central_banks.yaml       # Central bank rates, schedules, and FX drivers
+│   └── watchlist.yaml           # 64 cross-asset tickers grouped by asset class
 ├── data/
-│   └── market.db             # Local SQLite database (git-ignored)
+│   └── market.db                # Local SQLite database (git-ignored)
 ├── scripts/
-│   ├── test_engine.py        # End-to-end engine verification suite (v1)
-│   ├── test_saved_trades.py  # Trade inventory & invalidation tests (v1)
-│   ├── test_v2_engine.py     # Multi-factor ratings engine verification (v2)
-│   └── verify_tickers.py     # Yahoo Finance ticker live check utility
+│   ├── test_engine.py           # End-to-end engine verification suite (v1)
+│   ├── test_saved_trades.py     # Trade inventory & invalidation tests (v1)
+│   ├── test_sovereign_yields.py # 10Y sovereign yields & spread verification (v2)
+│   ├── test_v2_engine.py        # Multi-factor ratings engine verification (v2)
+│   └── verify_tickers.py        # Yahoo Finance ticker live check utility
 ├── src/
-│   ├── app.py                # Dashboard v1.0 Streamlit application
-│   ├── app_v2.py             # Dashboard v2.0 Streamlit application
-│   ├── central_banks.py      # Central bank policy & calendar analytics
-│   ├── early_signals.py      # Divergence detection, breadth & squeeze scanner
-│   ├── fetch.py              # Yahoo Finance batch ingestion job
-│   ├── historical_analysis.py# Historical regime lookbacks & momentum
-│   ├── metrics.py            # Technical indicators (RSI, ATR, Bollinger, SMA, EMA)
-│   ├── regime.py             # Macro regime classification & yield curve analysis
-│   ├── storage.py            # SQLite schema, upsert, and query layer
-│   ├── swing_screener.py     # Algorithmic trade generation & blueprinting
-│   └── tactical_engine.py    # Dashboard v2.0 quantitative multi-factor ratings engine
+│   ├── app.py                   # Dashboard v1.0 Streamlit application
+│   ├── app_v2.py                # Dashboard v2.0 Streamlit application
+│   ├── central_banks.py         # Central bank policy & calendar analytics
+│   ├── early_signals.py         # Divergence detection, breadth & squeeze scanner
+│   ├── fetch.py                 # Yahoo Finance & sovereign yields ingestion job
+│   ├── historical_analysis.py   # Historical regime lookbacks & momentum
+│   ├── metrics.py               # Technical indicators (RSI, ATR, Bollinger, SMA, EMA)
+│   ├── regime.py                # Macro regime classification & yield curve analysis
+│   ├── sovereign_yields.py      # Global 10Y sovereign rates & FX spread analytics
+│   ├── storage.py               # SQLite schema, upsert, and query layer
+│   ├── swing_screener.py        # Algorithmic trade generation & blueprinting
+│   └── tactical_engine.py       # Dashboard v2.0 quantitative multi-factor ratings engine
 ├── .gitignore
 ├── currency_strength_indicator
 ├── LICENSE

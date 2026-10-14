@@ -27,6 +27,13 @@ from metrics import (
     pct_change,
 )
 from storage import get_connection, get_db_last_write_time, get_prices
+from sovereign_yields import (
+    SOVEREIGN_10Y_BENCHMARKS,
+    FX_YIELD_PAIRS,
+    get_latest_sovereign_yields,
+    get_fx_yield_differentials,
+    get_pair_yield_history,
+)
 from tactical_engine import (
     MACRO_QUADRANT_MATRIX,
     TARGET_SECURITIES,
@@ -58,6 +65,17 @@ def load_v2_ratings():
     try:
         ratings, macro_rep = compute_v2_dashboard_ratings(conn)
         return ratings, macro_rep
+    finally:
+        conn.close()
+
+
+@st.cache_data(ttl=120)
+def load_yield_differentials_data():
+    conn = get_connection()
+    try:
+        live_yields = get_latest_sovereign_yields(conn)
+        diffs = get_fx_yield_differentials(conn)
+        return live_yields, diffs
     finally:
         conn.close()
 
@@ -166,8 +184,9 @@ with col_m5:
         st.caption(f"DB Synced: {db_updated_at[:10] if db_updated_at else 'Active'}")
 
 # --- TABS DEFINITION ---
-tab_matrix, tab_currency, tab_logic = st.tabs([
+tab_matrix, tab_yields, tab_currency, tab_logic = st.tabs([
     "📊 Tactical Ratings Table",
+    "📈 10Y Yield Differentials & Rates",
     "💱 Currency Strength vs JPY",
     "📘 Methodology & Logic Rules",
 ])
@@ -398,7 +417,231 @@ with tab_matrix:
 
 
 # =============================================================
-# TAB 2: CURRENCY STRENGTH CHART
+# TAB 2: 10Y SOVEREIGN YIELD DIFFERENTIALS & RATES
+# =============================================================
+with tab_yields:
+    st.markdown("### Global 10-Year Sovereign Market Yields & FX Differentials")
+    st.caption(
+        "Institutional market benchmark 10-year sovereign government debt yields and their direct yield differentials "
+        "across all tracked FX currency pairs. Yield differentials drive multi-month capital flows and currency trend persistence."
+    )
+
+    live_yields, diffs = load_yield_differentials_data()
+
+    # 1. Top Section: 8 Sovereign 10Y Benchmark Cards
+    st.markdown("##### 🌐 Global 10Y Sovereign Debt Market Rates")
+    cards_col = st.columns(8)
+    for idx, (curr, y_data) in enumerate(live_yields.items()):
+        with cards_col[idx]:
+            with st.container(border=True):
+                st.caption(f"{y_data['flag']} {curr}")
+                st.markdown(f"**{y_data['yield']:.3f}%**")
+                bps_chg = y_data.get("change_bps", 0.0)
+                chg_color = "#10b981" if bps_chg > 0 else ("#ef4444" if bps_chg < 0 else "#94a3b8")
+                st.markdown(f"<span style='color:{chg_color}; font-size:0.8rem; font-weight:600;'>{bps_chg:+.1f} bps</span>", unsafe_allow_html=True)
+                st.caption(f"{y_data['country'].split('(')[0].strip()}")
+
+    # 2. FX Yield Differentials Table
+    st.markdown("---")
+    st.markdown("##### 💱 Watchlist FX 10-Year Yield Differentials Matrix")
+    st.caption("Yield Differential Formula: $\\text{Spread} = \\text{Yield}_{\\text{Base}} - \\text{Yield}_{\\text{Quote}}$. Widening spreads favor the base currency.")
+
+    f_col1, f_col2, f_col3 = st.columns([2, 2, 2])
+    with f_col1:
+        currency_filter = st.selectbox("Filter Currency Family", ["All Pairs", "USD Pairs", "JPY Crosses", "European Pairs", "Commodity FX"], index=0)
+    with f_col2:
+        rating_filter = st.selectbox("Filter Macro Alignment", ["All Ratings", "Bullish", "Neutral", "Bearish"], index=0)
+    with f_col3:
+        view_mode_y = st.radio("Yields Display View", ["Matrix Cards & Badges", "Interactive Grid (Sortable)"], horizontal=True, index=0)
+
+    filtered_diffs = diffs
+    if currency_filter == "USD Pairs":
+        filtered_diffs = [d for d in filtered_diffs if "USD" in d["pair"]]
+    elif currency_filter == "JPY Crosses":
+        filtered_diffs = [d for d in filtered_diffs if "JPY" in d["pair"]]
+    elif currency_filter == "European Pairs":
+        filtered_diffs = [d for d in filtered_diffs if "EUR" in d["pair"] or "GBP" in d["pair"] or "CHF" in d["pair"]]
+    elif currency_filter == "Commodity FX":
+        filtered_diffs = [d for d in filtered_diffs if "AUD" in d["pair"] or "NZD" in d["pair"] or "CAD" in d["pair"]]
+
+    if rating_filter != "All Ratings":
+        filtered_diffs = [d for d in filtered_diffs if d["macro_rating"] == rating_filter]
+
+    if view_mode_y == "Interactive Grid (Sortable)":
+        df_y_grid = pd.DataFrame([
+            {
+                "Pair": d["pair"],
+                "Spot Price": round(d["spot_price"], 4),
+                "1D Move %": round(d["spot_daily_change_pct"], 2),
+                "10Y Spread (bps)": d["spread_bps"],
+                "Base 10Y (%)": round(d["base_10y"], 3),
+                "Quote 10Y (%)": round(d["quote_10y"], 3),
+                "Spread 20D Chg (bps)": d["spread_20d_chg_bps"],
+                "Spread 5D Chg (bps)": d["spread_5d_chg_bps"],
+                "Cash Rate Spread (bps)": d["policy_rate_spread_bps"],
+                "Macro Yield Rating": f"{'🟢' if d['macro_rating']=='Bullish' else ('🔴' if d['macro_rating']=='Bearish' else '🟡')} {d['macro_rating']}",
+            }
+            for d in filtered_diffs
+        ])
+        st.dataframe(
+            df_y_grid.style.map(
+                lambda v: "color: #10b981; font-weight:600" if (isinstance(v, (int, float)) and v > 0) else ("color: #ef4444; font-weight:600" if (isinstance(v, (int, float)) and v < 0) else ""),
+                subset=["1D Move %", "Spread 20D Chg (bps)", "Spread 5D Chg (bps)"],
+            ),
+            use_container_width=True,
+            hide_index=True,
+            height=min(550, 45 + len(df_y_grid) * 38),
+        )
+    else:
+        rows_y_html = []
+        for d in filtered_diffs:
+            chg_c = "#10b981" if d["spot_daily_change_pct"] >= 0 else "#ef4444"
+            sign_20d = "+" if d["spread_20d_chg_bps"] >= 0 else ""
+            c_20d = "#10b981" if d["spread_20d_chg_bps"] >= 5.0 else ("#ef4444" if d["spread_20d_chg_bps"] <= -5.0 else "#94a3b8")
+            spread_sign = "+" if d["spread_bps"] >= 0 else ""
+
+            row_str = (
+                f"<tr style='border-bottom:1px solid rgba(255,255,255,0.07); height:3.2rem;'>"
+                f"<td style='padding:0.6rem 0.8rem; font-weight:700; font-size:1.02rem;'>"
+                f"{d['base_flag']}{d['quote_flag']} {d['pair']}"
+                f"<div style='font-size:0.75rem; color:#94a3b8; font-weight:400;'>{d['name']}</div>"
+                f"</td>"
+                f"<td style='padding:0.6rem 0.8rem; font-family:monospace; font-size:0.96rem;'>"
+                f"<b>{d['spot_price']:.4f}</b>"
+                f"<div style='font-size:0.75rem; color:{chg_c}; font-weight:600;'>{d['spot_daily_change_pct']:+.2f}%</div>"
+                f"</td>"
+                f"<td style='padding:0.6rem 0.8rem; font-family:monospace; font-size:0.98rem;'>"
+                f"<b>{spread_sign}{d['spread_bps']:.1f} bps</b>"
+                f"<div style='font-size:0.72rem; color:#94a3b8;'>({spread_sign}{d['spread_pct']:+.2f}%)</div>"
+                f"</td>"
+                f"<td style='padding:0.6rem 0.8rem; font-size:0.85rem;'>"
+                f"<div>{d['base_currency']} 10Y: <b>{d['base_10y']:.3f}%</b></div>"
+                f"<div style='color:#94a3b8;'>{d['quote_currency']} 10Y: <b>{d['quote_10y']:.3f}%</b></div>"
+                f"</td>"
+                f"<td style='padding:0.6rem 0.8rem; font-family:monospace;'>"
+                f"<span style='color:{c_20d}; font-weight:700;'>{sign_20d}{d['spread_20d_chg_bps']:.1f} bps</span>"
+                f"<div style='font-size:0.72rem; color:#94a3b8;'>5D: {d['spread_5d_chg_bps']:+.1f} bps</div>"
+                f"</td>"
+                f"<td style='padding:0.6rem 0.8rem; font-family:monospace;'>"
+                f"<b>{d['policy_rate_spread_bps']:+.1f} bps</b>"
+                f"<div style='font-size:0.72rem; color:#94a3b8;'>{d['base_currency']}: {d['base_policy_rate']:.2f}% | {d['quote_currency']}: {d['quote_policy_rate']:.2f}%</div>"
+                f"</td>"
+                f"<td style='padding:0.6rem 0.8rem;'>"
+                f"{badge_html(d['macro_rating'])}"
+                f"<div style='font-size:0.72rem; color:#94a3b8; margin-top:2px;'>{d['alignment_description']}</div>"
+                f"</td>"
+                f"</tr>"
+            )
+            rows_y_html.append(row_str)
+
+        table_y_html = (
+            "<div style='overflow-x:auto; border:1px solid rgba(255,255,255,0.1); border-radius:8px;'>"
+            "<table style='width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;'>"
+            "<thead>"
+            "<tr style='background:rgba(255,255,255,0.05); border-bottom:1px solid rgba(255,255,255,0.12); color:#94a3b8; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px;'>"
+            "<th style='padding:0.75rem 0.8rem;'>FX Pair</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Spot Price & 1D Move</th>"
+            "<th style='padding:0.75rem 0.8rem;'>10Y Sovereign Spread</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Component 10Y Yields</th>"
+            "<th style='padding:0.75rem 0.8rem;'>20D Spread Trend</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Policy Cash Rate Carry</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Macro Yield Alignment</th>"
+            "</tr>"
+            "</thead>"
+            "<tbody>"
+            + "".join(rows_y_html)
+            + "</tbody></table></div>"
+        )
+        render_html_block(table_y_html)
+
+    # 3. Interactive Dual-Axis Overlay Chart
+    st.markdown("---")
+    st.markdown("##### 📊 Interactive Overlay: FX Spot Exchange Rate vs. 10Y Sovereign Yield Spread")
+    st.caption("Visualizing historical alignment and multi-week divergences between FX price action and government debt yield differentials.")
+
+    c_select1, c_select2 = st.columns([2, 4])
+    with c_select1:
+        chosen_pair = st.selectbox(
+            "Select FX Pair for Dual-Axis Chart",
+            options=[p["pair"] for p in FX_YIELD_PAIRS],
+            index=3,  # default to USDJPY
+            format_func=lambda p: f"{next(x['name'] for x in FX_YIELD_PAIRS if x['pair'] == p)} ({p})",
+        )
+
+    conn = get_connection()
+    pair_hist = get_pair_yield_history(conn, chosen_pair)
+    conn.close()
+
+    if pair_hist.empty or len(pair_hist) < 10:
+        st.info("Insufficient aligned history for the selected currency pair.")
+    else:
+        chosen_item = next(p for p in FX_YIELD_PAIRS if p["pair"] == chosen_pair)
+        
+        # Dual Axis Plotly Chart
+        fig_dual = go.Figure()
+
+        # Left Axis: FX Spot Price
+        fig_dual.add_trace(go.Scatter(
+            x=pair_hist["date"],
+            y=pair_hist["spot_close"],
+            name=f"{chosen_pair} Spot Rate",
+            line={"color": "#38bdf8", "width": 2.2},
+            yaxis="y1",
+            hovertemplate="%{x}<br><b>Spot:</b> %{y:.4f}<extra></extra>",
+        ))
+
+        # Right Axis: 10Y Yield Spread
+        fig_dual.add_trace(go.Scatter(
+            x=pair_hist["date"],
+            y=pair_hist["spread_bps"],
+            name=f"10Y Sovereign Spread ({chosen_item['base']} - {chosen_item['quote']})",
+            line={"color": "#f59e0b", "width": 2.0, "dash": "dash"},
+            yaxis="y2",
+            hovertemplate="%{x}<br><b>10Y Spread:</b> %{y:+.1f} bps<extra></extra>",
+        ))
+
+        fig_dual.update_layout(
+            height=500,
+            hovermode="x unified",
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
+            margin={"l": 20, "r": 20, "t": 20, "b": 20},
+            yaxis={
+                "title": {"text": f"{chosen_pair} Spot Exchange Rate", "font": {"color": "#38bdf8"}},
+                "tickfont": {"color": "#38bdf8"},
+            },
+            yaxis2={
+                "title": {"text": "10Y Yield Spread (bps)", "font": {"color": "#f59e0b"}},
+                "tickfont": {"color": "#f59e0b"},
+                "overlaying": "y",
+                "side": "right",
+            },
+            xaxis={
+                "title": None,
+                "rangeselector": {
+                    "buttons": [
+                        {"count": 3, "label": "3M", "step": "month", "stepmode": "backward"},
+                        {"count": 6, "label": "6M", "step": "month", "stepmode": "backward"},
+                        {"count": 1, "label": "1Y", "step": "year", "stepmode": "backward"},
+                        {"step": "all", "label": "All"},
+                    ]
+                },
+                "rangeslider": {"visible": False},
+            },
+        )
+        st.plotly_chart(fig_dual, use_container_width=True)
+
+        latest_spread = pair_hist["spread_bps"].iloc[-1]
+        earliest_spread = pair_hist["spread_bps"].iloc[-21] if len(pair_hist) >= 21 else pair_hist["spread_bps"].iloc[0]
+        net_spread_chg = latest_spread - earliest_spread
+        st.info(
+            f"💡 **Macro Relationship:** For **{chosen_pair}**, the current 10Y sovereign yield differential is **{latest_spread:+.1f} bps** "
+            f"({net_spread_chg:+.1f} bps change over the past 20 trading days). "
+            f"When the spot exchange rate decouples from the 10Y yield differential trendline, it indicates potential mean-reversion tension."
+        )
+
+
+# =============================================================
+# TAB 3: CURRENCY STRENGTH CHART
 # =============================================================
 with tab_currency:
     st.subheader("Currency Strength vs JPY")
@@ -592,4 +835,35 @@ with tab_logic:
         - **🟢 Bullish:** Composite Score $\ge +2$ (robust multi-indicator technical alignment).
         - **🔴 Bearish:** Composite Score $\le -2$ (broad multi-indicator technical breakdown).
         - **🟡 Neutral:** Composite Score $\in \{-1, 0, +1\}$ (mixed or conflicting indicators).
+        """)
+
+    # Section 5: 10Y Sovereign Yield Differentials
+    with st.expander("5️⃣ Tab 2: Global 10Y Sovereign Yield Differentials & Rates", expanded=True):
+        st.markdown(r"""
+        #### Objective
+        Quantifies long-term capital flow pressures and sovereign yield incentives across global currency pairs using market benchmark 10-year government debt yields.
+
+        #### Mathematical Model
+        1. For each currency pair $\text{Base} / \text{Quote}$, identify the underlying 10-year sovereign government bond yields:
+           $$\Delta Y_{10\text{Y}} = \text{Yield}_{\text{Base}, 10\text{Y}} - \text{Yield}_{\text{Quote}, 10\text{Y}}$$
+           $$\text{Spread (bps)} = \Delta Y_{10\text{Y}} \times 100$$
+        2. Compute the **20-Trading-Day Spread Momentum**:
+           $$\Delta \text{Spread}_{20\text{D}} = \text{Spread}_t - \text{Spread}_{t-20}$$
+        3. Pair with the **Overnight Policy Cash Rate Carry**:
+           $$\text{Carry} = \text{PolicyRate}_{\text{Base}} - \text{PolicyRate}_{\text{Quote}}$$
+
+        #### Decision Rules
+        - **🟢 Bullish Yield Tailwind:** 20-Day spread widening $\ge +5.0\text{ bps}$ in favor of the base currency (institutional capital incentives expanding toward base).
+        - **🔴 Bearish Yield Headwind:** 20-Day spread narrowing $\le -5.0\text{ bps}$ against the base currency (institutional capital incentives flowing toward quote).
+        - **🟡 Neutral:** 20-Day spread change is within $\pm 5.0\text{ bps}$ (spread is steady or consolidating).
+
+        #### Sovereign 10-Year Benchmark Debt Universe
+        - 🇺🇸 **United States:** U.S. 10-Year Treasury Note (`US10Y`)
+        - 🇪🇺 **Eurozone:** German 10-Year Federal Bund (`DE10Y-DE` - Eurozone core benchmark)
+        - 🇬🇧 **United Kingdom:** U.K. 10-Year Gilt (`UK10Y-GB`)
+        - 🇯🇵 **Japan:** Japan 10-Year JGB (`JP10Y-JP`)
+        - 🇦🇺 **Australia:** Australia 10-Year Commonwealth Bond (`AU10Y-AU`)
+        - 🇨🇦 **Canada:** Canada 10-Year Benchmark Bond (`CA10Y-CA`)
+        - 🇳🇿 **New Zealand:** New Zealand 10-Year Government Bond (`NZ10Y-NZ`)
+        - 🇨🇭 **Switzerland:** Swiss 10-Year Confederation Bond (`CH10Y-CH`)
         """)

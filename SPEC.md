@@ -122,22 +122,24 @@ market-scan/
 ├── data/
 │   └── market.db             # Local SQLite database (git-ignored)
 ├── scripts/
-│   ├── test_engine.py        # End-to-end engine verification suite (v1)
-│   ├── test_saved_trades.py  # Trade inventory & invalidation tests (v1)
-│   ├── test_v2_engine.py     # Multi-factor ratings engine verification (v2)
-│   └── verify_tickers.py     # Yahoo Finance ticker live check utility
+│   ├── test_engine.py           # End-to-end engine verification suite (v1)
+│   ├── test_saved_trades.py     # Trade inventory & invalidation tests (v1)
+│   ├── test_sovereign_yields.py # 10Y sovereign yields & spread verification (v2)
+│   ├── test_v2_engine.py        # Multi-factor ratings engine verification (v2)
+│   └── verify_tickers.py        # Yahoo Finance ticker live check utility
 ├── src/
-│   ├── app.py                # Dashboard v1.0 Streamlit application
-│   ├── app_v2.py             # Dashboard v2.0 Streamlit application
-│   ├── central_banks.py      # Central bank policy & calendar analytics
-│   ├── early_signals.py      # Divergence detection, breadth & squeeze scanner
-│   ├── fetch.py              # Yahoo Finance batch ingestion job
-│   ├── historical_analysis.py# Historical regime lookbacks & momentum
-│   ├── metrics.py            # Technical indicators (RSI, ATR, Bollinger, SMA, EMA)
-│   ├── regime.py             # Macro regime classification & yield curve analysis
-│   ├── storage.py            # SQLite schema, upsert, and query layer
-│   ├── swing_screener.py     # Algorithmic trade generation & blueprinting
-│   └── tactical_engine.py    # Dashboard v2.0 quantitative multi-factor ratings engine
+│   ├── app.py                   # Dashboard v1.0 Streamlit application
+│   ├── app_v2.py                # Dashboard v2.0 Streamlit application
+│   ├── central_banks.py         # Central bank policy & calendar analytics
+│   ├── early_signals.py         # Divergence detection, breadth & squeeze scanner
+│   ├── fetch.py                 # Yahoo Finance & sovereign yields ingestion job
+│   ├── historical_analysis.py   # Historical regime lookbacks & momentum
+│   ├── metrics.py               # Technical indicators (RSI, ATR, Bollinger, SMA, EMA)
+│   ├── regime.py                # Macro regime classification & yield curve analysis
+│   ├── sovereign_yields.py      # Global 10Y sovereign rates & FX spread analytics
+│   ├── storage.py               # SQLite schema, upsert, and query layer
+│   ├── swing_screener.py        # Algorithmic trade generation & blueprinting
+│   └── tactical_engine.py       # Dashboard v2.0 quantitative multi-factor ratings engine
 ├── currency_strength_indicator
 ├── requirements.txt
 └── README.md
@@ -155,10 +157,11 @@ market-scan/
 
 ### 10.1 Objectives & Design Principles
 - **Coexistence:** Leave Dashboard v1.0 (`src/app.py`) intact while providing a dedicated v2.0 application (`src/app_v2.py`).
-- **Core Focus:** Multi-factor institutional rating table across **12 global securities** with 3 distinct tabs:
+- **Core Focus:** Multi-factor institutional rating table across **12 global securities** with 4 distinct tabs:
   1. **Tab 1: 📊 Tactical Ratings Table**
-  2. **Tab 2: 💱 Currency Strength vs JPY** (Pine Script Relative Strength model)
-  3. **Tab 3: 📘 Quantitative Logic & Methodology** (transparent rules and 4-quadrant response matrix for user audit)
+  2. **Tab 2: 📈 10Y Yield Differentials & Rates** (Global 10Y sovereign benchmark rates & FX spreads)
+  3. **Tab 3: 💱 Currency Strength vs JPY** (Pine Script Relative Strength model)
+  4. **Tab 4: 📘 Quantitative Logic & Methodology** (transparent rules, 10Y spreads, and 4-quadrant response matrix for user audit)
 
 ### 10.2 Tracked Securities Universe (12 Assets)
 1. `AUDUSD` (`AUDUSD=X`) — Australian Dollar / US Dollar

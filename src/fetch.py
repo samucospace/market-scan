@@ -55,6 +55,17 @@ def main():
         ok += 1
     conn.close()
 
+    # Also fetch and update Global 10Y Sovereign Debt Market Yields
+    log.info("Fetching Global 10-Year Sovereign Market Yields...")
+    try:
+        from sovereign_yields import get_latest_sovereign_yields
+        conn = get_connection()
+        s_yields = get_latest_sovereign_yields(conn)
+        conn.close()
+        log.info("Done: Updated %d sovereign 10Y market benchmarks.", len(s_yields))
+    except Exception as e:
+        log.error("Failed to update sovereign yields: %s", e)
+
     log.info("Done: %d/%d tickers updated.", ok, len(tickers))
     if failed:
         log.warning("No data for: %s", failed)
