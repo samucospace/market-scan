@@ -21,6 +21,7 @@ groups:
     - { ticker: AUDNZD=X, note: "AUDNZD" }
     - { ticker: CADJPY=X, note: "CADJPY" }
     - { ticker: USDCHF=X, note: "USDCHF" }
+    - { ticker: NZDUSD=X, note: "NZDUSD" }
     - { ticker: DX-Y.NYB, note: "DXY — US Dollar Index" }
 
   Equity Indices:

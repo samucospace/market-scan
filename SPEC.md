@@ -117,16 +117,28 @@ Percent changes are computed on read (not stored), so definitions can change wit
 ```
 market-scan/
 ├── config/
-│   └── watchlist.yaml
+│   ├── central_banks.yaml    # Central bank rates, schedules, and FX drivers
+│   └── watchlist.yaml        # 64 cross-asset tickers grouped by asset class
 ├── data/
-│   └── market.db            # created on first run
+│   └── market.db             # Local SQLite database (git-ignored)
 ├── scripts/
-│   └── verify_tickers.py     # one-off checker: confirms every watchlist ticker resolves
+│   ├── test_engine.py        # End-to-end engine verification suite (v1)
+│   ├── test_saved_trades.py  # Trade inventory & invalidation tests (v1)
+│   ├── test_v2_engine.py     # Multi-factor ratings engine verification (v2)
+│   └── verify_tickers.py     # Yahoo Finance ticker live check utility
 ├── src/
-│   ├── fetch.py              # daily batch fetch job
-│   ├── storage.py            # SQLite read/write helpers
-│   ├── metrics.py            # % change calculations
-│   └── app.py                 # Streamlit dashboard
+│   ├── app.py                # Dashboard v1.0 Streamlit application
+│   ├── app_v2.py             # Dashboard v2.0 Streamlit application
+│   ├── central_banks.py      # Central bank policy & calendar analytics
+│   ├── early_signals.py      # Divergence detection, breadth & squeeze scanner
+│   ├── fetch.py              # Yahoo Finance batch ingestion job
+│   ├── historical_analysis.py# Historical regime lookbacks & momentum
+│   ├── metrics.py            # Technical indicators (RSI, ATR, Bollinger, SMA, EMA)
+│   ├── regime.py             # Macro regime classification & yield curve analysis
+│   ├── storage.py            # SQLite schema, upsert, and query layer
+│   ├── swing_screener.py     # Algorithmic trade generation & blueprinting
+│   └── tactical_engine.py    # Dashboard v2.0 quantitative multi-factor ratings engine
+├── currency_strength_indicator
 ├── requirements.txt
 └── README.md
 ```
@@ -139,7 +151,67 @@ market-scan/
 5. Task Scheduler entry to run `fetch.py` daily.
 6. Manual QA: missing-data handling (new listings, holidays), stale-data banner if fetch failed.
 
-## 10. Open Questions for User
-- Should the dashboard run only locally (`streamlit run`) or do you want it reachable from your
-  phone on your home network (`streamlit run --server.address 0.0.0.0`)?
-- The current watchlist ([config/watchlist.yaml](config/watchlist.yaml)) contains 64 tickers; verify any additions with `scripts/verify_tickers.py`.
+## 10. Dashboard v2.0 Specification — Cross-Asset Tactical Ratings Matrix
+
+### 10.1 Objectives & Design Principles
+- **Coexistence:** Leave Dashboard v1.0 (`src/app.py`) intact while providing a dedicated v2.0 application (`src/app_v2.py`).
+- **Core Focus:** Multi-factor institutional rating table across **12 global securities** with 3 distinct tabs:
+  1. **Tab 1: 📊 Tactical Ratings Table**
+  2. **Tab 2: 💱 Currency Strength vs JPY** (Pine Script Relative Strength model)
+  3. **Tab 3: 📘 Quantitative Logic & Methodology** (transparent rules and 4-quadrant response matrix for user audit)
+
+### 10.2 Tracked Securities Universe (12 Assets)
+1. `AUDUSD` (`AUDUSD=X`) — Australian Dollar / US Dollar
+2. `EURUSD` (`EURUSD=X`) — Euro / US Dollar
+3. `GBPUSD` (`GBPUSD=X`) — British Pound / US Dollar
+4. `USDJPY` (`USDJPY=X`) — US Dollar / Japanese Yen
+5. `NZDUSD` (`NZDUSD=X`) — New Zealand Dollar / US Dollar
+6. `US500` (`^GSPC`) — S&P 500 Index
+7. `US Tech 100` (`^NDX`) — Nasdaq 100 Index
+8. `USDCAD` (`USDCAD=X`) — US Dollar / Canadian Dollar
+9. `Brent Crude` (`BZ=F`) — Brent Crude Oil Futures
+10. `Copper` (`HG=F`) — Copper Futures (COMEX)
+11. `Gold` (`GC=F`) — Gold Futures (COMEX)
+12. `Silver` (`SI=F`) — Silver Futures (COMEX)
+
+### 10.3 The 4 Quantitative Rating Dimensions
+
+#### 1. Primary Trend (100-day EMA)
+- **Model:** Calculates 100-day Exponential Moving Average ($\text{EMA}_{100}$) on daily closing prices.
+- **Rules:**
+  - $\text{Price} \ge \text{EMA}_{100} \times (1 + 0.30\%) \implies \mathbf{Bullish}$
+  - $\text{Price} \le \text{EMA}_{100} \times (1 - 0.30\%) \implies \mathbf{Bearish}$
+  - Within $\pm 0.30\% \implies \mathbf{Neutral}$ (testing trendline / consolidating)
+  - Also incorporates 5-day slope of $\text{EMA}_{100}$ to confirm acceleration.
+
+#### 2. Macro Environment (4-Quadrant Growth vs. Inflation Framework)
+- **Model:** Uses `regime.py`'s composite Growth (-100 to +100) and Inflation (-100 to +100) scores:
+  - *Quadrant 1: Goldilocks / Disinflationary Expansion* (Growth $\ge 0$, Inflation $\le 0$)
+  - *Quadrant 2: Reflation / Overheating Expansion* (Growth $\ge 0$, Inflation $> 0$)
+  - *Quadrant 3: Stagflation / Late Cycle Squeeze* (Growth $< 0$, Inflation $> 0$)
+  - *Quadrant 4: Contraction / Deflationary Risk-Off* (Growth $< 0$, Inflation $\le 0$)
+- **Asset Class Mapping:** Each asset is mapped to an institutional stance based on macroeconomic transmission theory:
+  - Cyclical equities (`US500`, `US Tech 100`) thrive in Goldilocks and Reflation, suffer in Stagflation and Contraction.
+  - Industrial commodities (`Copper`, `Brent Crude`) thrive in Reflation, struggle in Contraction.
+  - Precious metals (`Gold`) excel in Stagflation and Contraction (flight to safety + falling real rates).
+  - High-beta FX (`AUDUSD`, `NZDUSD`) track global growth and commodity demand.
+
+#### 3. Daily Correlated Assets (Intermarket Transmission)
+- **Model:** 60-trading-day rolling Pearson correlation ($\rho_i$) with benchmark intermarket drivers (DXY, 10Y yields, Copper, Crude Oil, S&P 500).
+- **Formula:**
+  $$\text{Impulse} = \frac{\sum_i (\rho_i \times R_{\text{today}, i})}{\sum_i |\rho_i|}$$
+- **Thresholds:**
+  - $\text{Impulse} > +0.05\% \implies \mathbf{Bullish}$
+  - $\text{Impulse} < -0.05\% \implies \mathbf{Bearish}$
+  - $-0.05\% \le \text{Impulse} \le +0.05\% \implies \mathbf{Neutral}$
+
+#### 4. Tactical Technicals (Composite Quantitative Score)
+- **Model:** 4-factor scoring model spanning trend, momentum, and volatility channels (range: $-4$ to $+4$):
+  - 20-day EMA: Price $> 20$ EMA ($+1$) vs Price $< 20$ EMA ($-1$)
+  - RSI (14): RSI $> 55$ ($+1$) vs RSI $< 45$ ($-1$) vs $45 \le \text{RSI} \le 55$ ($0$)
+  - Bollinger Bands %B: $\%B > 0.60$ ($+1$) vs $\%B < 0.40$ ($-1$) vs $0.40 \le \%B \le 0.60$ ($0$)
+  - Short-term Trend Stack: 10 EMA $> 20$ EMA ($+1$) vs 10 EMA $< 20$ EMA ($-1$)
+- **Thresholds:**
+  - $\text{Score} \ge +2 \implies \mathbf{Bullish}$
+  - $\text{Score} \le -2 \implies \mathbf{Bearish}$
+  - $\text{Score} \in \{-1, 0, +1\} \implies \mathbf{Neutral}$

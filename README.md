@@ -25,15 +25,43 @@ python src/fetch.py
 ```
 > **Note**: This populates `data/market.db`. Scheduled daily updates can be automated via Windows Task Scheduler or cron after major market closes.
 
-### 3. Launch the Interactive Dashboard
-Launch the Streamlit analytical platform:
-```bash
-python -m streamlit run src/app.py
-```
+### 3. Launch the Interactive Dashboards
+
+- **Dashboard v2.0 (New Tactical Ratings Matrix, Currency Strength & Methodology):**
+  ```bash
+  python -m streamlit run src/app_v2.py
+  ```
+
+- **Dashboard v1.0 (Original Macro Regime, Central Banks & Swing Trade Platform):**
+  ```bash
+  python -m streamlit run src/app.py
+  ```
 
 ---
 
-## 🏛️ Core Features & Dashboard Capabilities
+## ⚡ Dashboard v2.0 — Cross-Asset Tactical Matrix
+
+Dashboard v2.0 (`src/app_v2.py`) provides an institutional multi-factor matrix across **12 core global assets**, categorizing each asset into **Bullish 🟢**, **Neutral 🟡**, or **Bearish 🔴** across 4 key dimensions:
+
+### Tracked Securities (12 Assets)
+- **FX:** `AUDUSD`, `EURUSD`, `GBPUSD`, `USDJPY`, `NZDUSD`, `USDCAD`
+- **Equities:** `US500` (S&P 500 Index - `^GSPC`), `US Tech 100` (Nasdaq 100 Index - `^NDX`)
+- **Commodities:** `Brent Crude` (`BZ=F`), `Copper` (`HG=F`), `Gold` (`GC=F`), `Silver` (`SI=F`)
+
+### The 4 Rating Columns
+1. **Primary Trend (100-day EMA):** Evaluates whether price is trading above ($\ge +0.30\% \to$ Bullish), below ($\le -0.30\% \to$ Bearish), or within ($\pm 0.30\% \to$ Neutral) of the 100-day Exponential Moving Average, with 5-day slope verification.
+2. **Macro Environment (4 Quadrants):** Maps the current Growth vs Inflation regime (*Goldilocks*, *Reflation*, *Stagflation*, *Contraction*) to an asset-specific institutional response matrix.
+3. **Daily Correlated Assets:** Uses 60-day rolling return correlations ($\rho_i$) with benchmark intermarket drivers (DXY, 10Y yields, Copper, Crude Oil, S&P 500) and today's returns to compute a weighted impulse ($\text{Impulse} > +0.05\% \to$ Bullish, $< -0.05\% \to$ Bearish).
+4. **Tactical Technicals:** Synthesizes 20-day EMA (+1/-1), RSI 14 (+1/0/-1), Bollinger Bands %B (+1/0/-1), and 10/20 EMA trend stack (+1/-1) into a composite $-4$ to $+4$ score ($\ge +2 \to$ Bullish, $\le -2 \to$ Bearish).
+
+### Dashboard v2.0 Tabs
+- **Tab 1: 📊 Tactical Ratings Table:** Live rating table, asset-class and stance filters, summary cards, and an interactive drill-down inspector with technical price charts.
+- **Tab 2: 💱 Currency Strength vs JPY:** TradingView Pine Script relative strength model `(close - 200 SMA) / close` for AUD, EUR, USD, NZD, CHF, GBP, and CAD with leaderboard rankings.
+- **Tab 3: 📘 Methodology & Logic Rules:** Complete, transparent institutional documentation detailing all formulas, cutoffs, and the full 12-asset $\times$ 4-quadrant response matrix for user auditing.
+
+---
+
+## 🏛️ Core Features & Dashboard Capabilities (Dashboard v1.0)
 
 ### 1. Top KPI Header
 - **Macro Regime Badge**: Automatically identifies the current 4-Quadrant macro cycle (*Goldilocks*, *Reflation*, *Stagflation*, *Contraction*).
@@ -83,8 +111,12 @@ python -m streamlit run src/app.py
 
 ## 🧪 Verification & Automated Testing
 
-To run the automated test suite verifying all quantitative models, central bank matrices, divergence radars, and trade generation engines:
+To run the automated test suite verifying all quantitative models, central bank matrices, divergence radars, trade generation engines, and v2 tactical engine:
 ```bash
+# Dashboard v2.0 Tactical Engine Verification
+python scripts/test_v2_engine.py
+
+# Dashboard v1.0 Engines Verification
 python scripts/test_engine.py
 python scripts/test_saved_trades.py
 ```
@@ -97,31 +129,33 @@ python scripts/test_saved_trades.py
 market-scan/
 ├── config/
 │   ├── central_banks.yaml    # Central bank rates, schedules, and FX drivers
-│   └── watchlist.yaml      # 64 cross-asset tickers grouped by asset class
+│   └── watchlist.yaml        # 64 cross-asset tickers grouped by asset class
 ├── data/
 │   └── market.db             # Local SQLite database (git-ignored)
 ├── scripts/
-│   ├── test_engine.py        # End-to-end engine verification suite
-│   ├── test_saved_trades.py  # Trade inventory & invalidation tests
+│   ├── test_engine.py        # End-to-end engine verification suite (v1)
+│   ├── test_saved_trades.py  # Trade inventory & invalidation tests (v1)
+│   ├── test_v2_engine.py     # Multi-factor ratings engine verification (v2)
 │   └── verify_tickers.py     # Yahoo Finance ticker live check utility
 ├── src/
-│   ├── app.py                # Main Streamlit dashboard application
+│   ├── app.py                # Dashboard v1.0 Streamlit application
+│   ├── app_v2.py             # Dashboard v2.0 Streamlit application
 │   ├── central_banks.py      # Central bank policy & calendar analytics
 │   ├── early_signals.py      # Divergence detection, breadth & squeeze scanner
 │   ├── fetch.py              # Yahoo Finance batch ingestion job
 │   ├── historical_analysis.py# Historical regime lookbacks & momentum
-│   ├── metrics.py            # Technical indicators (RSI, ATR, Bollinger, SMA)
+│   ├── metrics.py            # Technical indicators (RSI, ATR, Bollinger, SMA, EMA)
 │   ├── regime.py             # Macro regime classification & yield curve analysis
 │   ├── storage.py            # SQLite schema, upsert, and query layer
-│   └── swing_screener.py     # Algorithmic trade generation & blueprinting
+│   ├── swing_screener.py     # Algorithmic trade generation & blueprinting
+│   └── tactical_engine.py    # Dashboard v2.0 quantitative multi-factor ratings engine
 ├── .gitignore
+├── currency_strength_indicator
 ├── LICENSE
 ├── requirements.txt
 ├── SPEC.md
 └── tickers.xlsx
 ```
-
----
 
 ## 📄 License
 
