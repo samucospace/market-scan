@@ -9,6 +9,7 @@ Features:
 from __future__ import annotations
 
 import sqlite3
+import textwrap
 from pathlib import Path
 
 import pandas as pd
@@ -82,6 +83,15 @@ def build_jpy_strength_data() -> tuple[pd.DataFrame, list[str]]:
     return pd.concat(series.values(), axis=1, sort=False).sort_index(), missing_pairs
 
 
+def render_html_block(html_content: str) -> None:
+    """Renders HTML without Markdown 4-space code block indentation bugs."""
+    clean_html = textwrap.dedent(html_content).strip()
+    if hasattr(st, "html"):
+        st.html(clean_html)
+    else:
+        st.markdown(clean_html, unsafe_allow_html=True)
+
+
 def badge_html(rating: str) -> str:
     color_map = {
         "Bullish": {"bg": "rgba(16, 185, 129, 0.15)", "text": "#10b981", "border": "#10b981", "icon": "🟢"},
@@ -103,7 +113,7 @@ ratings, macro_rep = load_v2_ratings()
 db_updated_at = get_db_last_write_time()
 as_of_date = max((r.as_of for r in ratings if r.as_of), default="N/A")
 
-st.markdown(
+render_html_block(
     """
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
         <div>
@@ -120,8 +130,7 @@ st.markdown(
             </span>
         </div>
     </div>
-    """,
-    unsafe_allow_html=True,
+    """
 )
 
 # Macro Overview KPI Cards
@@ -175,13 +184,15 @@ with tab_matrix:
     )
 
     # Filter controls
-    f_col1, f_col2, f_col3 = st.columns([2, 2, 3])
+    f_col1, f_col2, f_col3, f_col4 = st.columns([2, 2, 2, 2])
     with f_col1:
         category_filter = st.selectbox("Asset Class Filter", ["All Assets", "FX", "Equities", "Commodities"], index=0)
     with f_col2:
         stance_filter = st.selectbox("Consensus Stance Filter", ["All Stances", "Bullish", "Neutral", "Bearish"], index=0)
     with f_col3:
         search_query = st.text_input("Search Security", placeholder="e.g. Gold, US500, AUDUSD...").strip().lower()
+    with f_col4:
+        display_mode = st.radio("Display View", ["Matrix Cards & Badges", "Interactive Grid (Sortable)"], horizontal=True, index=0)
 
     # Filtered list
     filtered_ratings = ratings
@@ -200,7 +211,7 @@ with tab_matrix:
     neut_count = sum(1 for r in ratings if r.overall_stance == "Neutral")
     bear_count = sum(1 for r in ratings if r.overall_stance == "Bearish")
 
-    st.markdown(
+    render_html_block(
         f"""
         <div style="display:flex;gap:1.5rem;align-items:center;margin:0.6rem 0 1rem 0;padding:0.6rem 1rem;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.08);">
             <span style="font-size:0.88rem;color:#94a3b8;font-weight:600;">12-Asset Sentiment Overview:</span>
@@ -209,85 +220,85 @@ with tab_matrix:
             <span>🔴 <b>{bear_count}</b> Bearish</span>
             <span style="margin-left:auto;color:#64748b;font-size:0.82rem;">Showing {len(filtered_ratings)} of 12 tracked securities</span>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
-    # Render Table via HTML
-    rows_html = []
-    for r in filtered_ratings:
-        chg_color = "#10b981" if r.daily_change_pct >= 0 else "#ef4444"
-        chg_sign = "+" if r.daily_change_pct >= 0 else ""
-        px_fmt = f"{r.last_price:.4f}" if r.last_price < 10 else f"{r.last_price:,.2f}"
-
-        # Stance badge
-        score_pill = (
-            f"<span style='font-size:0.78rem;font-weight:700;padding:0.2rem 0.5rem;border-radius:4px;"
-            f"background:{'rgba(16,185,129,0.2)' if r.net_score > 0 else ('rgba(239,68,68,0.2)' if r.net_score < 0 else 'rgba(234,179,8,0.2)')};"
-            f"color:{'#10b981' if r.net_score > 0 else ('#ef4444' if r.net_score < 0 else '#eab308')};'>"
-            f"{r.overall_stance} ({r.net_score:+d})"
-            f"</span>"
+    if display_mode == "Interactive Grid (Sortable)":
+        df_grid = pd.DataFrame([
+            {
+                "Security": r.symbol,
+                "Name": r.name,
+                "Asset Class": r.category,
+                "Price": round(r.last_price, 4),
+                "1D %": round(r.daily_change_pct, 2),
+                "Primary Trend (100 EMA)": f"{'🟢' if r.primary_trend=='Bullish' else ('🔴' if r.primary_trend=='Bearish' else '🟡')} {r.primary_trend}",
+                "Macro Environment": f"{'🟢' if r.macro_environment=='Bullish' else ('🔴' if r.macro_environment=='Bearish' else '🟡')} {r.macro_environment}",
+                "Daily Correlated Assets": f"{'🟢' if r.correlated_assets=='Bullish' else ('🔴' if r.correlated_assets=='Bearish' else '🟡')} {r.correlated_assets}",
+                "Tactical Technicals": f"{'🟢' if r.tactical_technicals=='Bullish' else ('🔴' if r.tactical_technicals=='Bearish' else '🟡')} {r.tactical_technicals}",
+                "Consensus Stance": f"{r.overall_stance} ({r.net_score:+d})",
+            }
+            for r in filtered_ratings
+        ])
+        st.dataframe(
+            df_grid.style.map(
+                lambda v: "color: #10b981; font-weight:600" if (isinstance(v, (int, float)) and v > 0) else ("color: #ef4444; font-weight:600" if (isinstance(v, (int, float)) and v < 0) else ""),
+                subset=["1D %"],
+            ),
+            use_container_width=True,
+            hide_index=True,
+            height=min(550, 45 + len(df_grid) * 38),
         )
+    else:
+        # Render Table via HTML
+        rows_html = []
+        for r in filtered_ratings:
+            chg_color = "#10b981" if r.daily_change_pct >= 0 else "#ef4444"
+            chg_sign = "+" if r.daily_change_pct >= 0 else ""
+            px_fmt = f"{r.last_price:.4f}" if r.last_price < 10 else f"{r.last_price:,.2f}"
 
-        rows_html.append(
-            f"""
-            <tr style="border-bottom:1px solid rgba(255,255,255,0.07); height:3.2rem;">
-                <td style="padding:0.6rem 0.8rem; font-weight:700; font-size:1.02rem;">
-                    {r.symbol}
-                    <div style="font-size:0.75rem; color:#94a3b8; font-weight:400;">{r.name}</div>
-                </td>
-                <td style="padding:0.6rem 0.8rem;">
-                    <span style="font-size:0.75rem; background:rgba(255,255,255,0.06); padding:0.2rem 0.5rem; border-radius:4px; color:#cbd5e1;">{r.category}</span>
-                </td>
-                <td style="padding:0.6rem 0.8rem; font-family:monospace; font-size:0.96rem;">
-                    <b>{px_fmt}</b>
-                    <div style="font-size:0.75rem; color:{chg_color}; font-weight:600;">{chg_sign}{r.daily_change_pct:.2f}%</div>
-                </td>
-                <td style="padding:0.6rem 0.8rem;">
-                    {badge_html(r.primary_trend)}
-                    <div style="font-size:0.72rem; color:#94a3b8; margin-top:2px;">{r.primary_trend_details['dist_pct']:+.1f}% vs 100EMA</div>
-                </td>
-                <td style="padding:0.6rem 0.8rem;">
-                    {badge_html(r.macro_environment)}
-                    <div style="font-size:0.72rem; color:#94a3b8; margin-top:2px;">{macro_rep.quadrant_name.split('/')[0].strip()}</div>
-                </td>
-                <td style="padding:0.6rem 0.8rem;">
-                    {badge_html(r.correlated_assets)}
-                    <div style="font-size:0.72rem; color:#94a3b8; margin-top:2px;">Impulse: {r.correlated_details['impulse_pct']:+.2f}%</div>
-                </td>
-                <td style="padding:0.6rem 0.8rem;">
-                    {badge_html(r.tactical_technicals)}
-                    <div style="font-size:0.72rem; color:#94a3b8; margin-top:2px;">RSI: {r.tactical_details['rsi']:.1f} | Score: {r.tactical_details['score']:+d}/4</div>
-                </td>
-                <td style="padding:0.6rem 0.8rem; text-align:center;">
-                    {score_pill}
-                </td>
-            </tr>
-            """
+            # Stance badge
+            score_pill = (
+                f"<span style='font-size:0.78rem;font-weight:700;padding:0.2rem 0.5rem;border-radius:4px;"
+                f"background:{'rgba(16,185,129,0.2)' if r.net_score > 0 else ('rgba(239,68,68,0.2)' if r.net_score < 0 else 'rgba(234,179,8,0.2)')};"
+                f"color:{'#10b981' if r.net_score > 0 else ('#ef4444' if r.net_score < 0 else '#eab308')};'>"
+                f"{r.overall_stance} ({r.net_score:+d})"
+                f"</span>"
+            )
+
+            row_str = (
+                f"<tr style='border-bottom:1px solid rgba(255,255,255,0.07); height:3.2rem;'>"
+                f"<td style='padding:0.6rem 0.8rem; font-weight:700; font-size:1.02rem;'>{r.symbol}<div style='font-size:0.75rem; color:#94a3b8; font-weight:400;'>{r.name}</div></td>"
+                f"<td style='padding:0.6rem 0.8rem;'><span style='font-size:0.75rem; background:rgba(255,255,255,0.06); padding:0.2rem 0.5rem; border-radius:4px; color:#cbd5e1;'>{r.category}</span></td>"
+                f"<td style='padding:0.6rem 0.8rem; font-family:monospace; font-size:0.96rem;'><b>{px_fmt}</b><div style='font-size:0.75rem; color:{chg_color}; font-weight:600;'>{chg_sign}{r.daily_change_pct:.2f}%</div></td>"
+                f"<td style='padding:0.6rem 0.8rem;'>{badge_html(r.primary_trend)}<div style='font-size:0.72rem; color:#94a3b8; margin-top:2px;'>{r.primary_trend_details['dist_pct']:+.1f}% vs 100EMA</div></td>"
+                f"<td style='padding:0.6rem 0.8rem;'>{badge_html(r.macro_environment)}<div style='font-size:0.72rem; color:#94a3b8; margin-top:2px;'>{macro_rep.quadrant_name.split('/')[0].strip()}</div></td>"
+                f"<td style='padding:0.6rem 0.8rem;'>{badge_html(r.correlated_assets)}<div style='font-size:0.72rem; color:#94a3b8; margin-top:2px;'>Impulse: {r.correlated_details['impulse_pct']:+.2f}%</div></td>"
+                f"<td style='padding:0.6rem 0.8rem;'>{badge_html(r.tactical_technicals)}<div style='font-size:0.72rem; color:#94a3b8; margin-top:2px;'>RSI: {r.tactical_details['rsi']:.1f} | Score: {r.tactical_details['score']:+d}/4</div></td>"
+                f"<td style='padding:0.6rem 0.8rem; text-align:center;'>{score_pill}</td>"
+                f"</tr>"
+            )
+            rows_html.append(row_str)
+
+        table_html = (
+            "<div style='overflow-x:auto; border:1px solid rgba(255,255,255,0.1); border-radius:8px;'>"
+            "<table style='width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;'>"
+            "<thead>"
+            "<tr style='background:rgba(255,255,255,0.05); border-bottom:1px solid rgba(255,255,255,0.12); color:#94a3b8; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px;'>"
+            "<th style='padding:0.75rem 0.8rem;'>Security</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Asset Class</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Price & 1D Move</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Primary Trend (100 EMA)</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Macro Environment (4 Quadrants)</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Daily Correlated Assets</th>"
+            "<th style='padding:0.75rem 0.8rem;'>Tactical Technicals</th>"
+            "<th style='padding:0.75rem 0.8rem; text-align:center;'>Consensus Stance</th>"
+            "</tr>"
+            "</thead>"
+            "<tbody>"
+            + "".join(rows_html)
+            + "</tbody></table></div>"
         )
-
-    table_html = f"""
-    <div style="overflow-x:auto; border:1px solid rgba(255,255,255,0.1); border-radius:8px;">
-        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;">
-            <thead>
-                <tr style="background:rgba(255,255,255,0.05); border-bottom:1px solid rgba(255,255,255,0.12); color:#94a3b8; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px;">
-                    <th style="padding:0.75rem 0.8rem;">Security</th>
-                    <th style="padding:0.75rem 0.8rem;">Asset Class</th>
-                    <th style="padding:0.75rem 0.8rem;">Price & 1D Move</th>
-                    <th style="padding:0.75rem 0.8rem;">Primary Trend (100 EMA)</th>
-                    <th style="padding:0.75rem 0.8rem;">Macro Environment (4 Quadrants)</th>
-                    <th style="padding:0.75rem 0.8rem;">Daily Correlated Assets</th>
-                    <th style="padding:0.75rem 0.8rem;">Tactical Technicals</th>
-                    <th style="padding:0.75rem 0.8rem; text-align:center;">Consensus Stance</th>
-                </tr>
-            </thead>
-            <tbody>
-                {"".join(rows_html)}
-            </tbody>
-        </table>
-    </div>
-    """
-    st.markdown(table_html, unsafe_allow_html=True)
+        render_html_block(table_html)
 
     # --- DEEP-DIVE INSPECTION ACCORDION ---
     st.markdown("---")
@@ -309,10 +320,14 @@ with tab_matrix:
             st.markdown(f"#### 📈 {sec_match.symbol} Rating Synthesis")
             st.markdown(f"**Asset Class:** {sec_match.category} | **Ticker:** `{sec_match.ticker}` | **Price:** `{sec_match.last_price:.4f}`")
             
-            st.markdown(f"- **Primary Trend:** {badge_html(sec_match.primary_trend)} — {sec_match.primary_trend_details['summary']}", unsafe_allow_html=True)
-            st.markdown(f"- **Macro Quadrant:** {badge_html(sec_match.macro_environment)} — {sec_match.macro_details['rationale']}", unsafe_allow_html=True)
-            st.markdown(f"- **Daily Correlated Assets:** {badge_html(sec_match.correlated_assets)} — {sec_match.correlated_details['summary']}", unsafe_allow_html=True)
-            st.markdown(f"- **Tactical Technicals:** {badge_html(sec_match.tactical_technicals)} — {sec_match.tactical_details['summary']}", unsafe_allow_html=True)
+            render_html_block(
+                f"""
+                <div style="margin-bottom:0.5rem;"><b>Primary Trend:</b> {badge_html(sec_match.primary_trend)} <span style="color:#cbd5e1;font-size:0.88rem;">— {sec_match.primary_trend_details['summary']}</span></div>
+                <div style="margin-bottom:0.5rem;"><b>Macro Quadrant:</b> {badge_html(sec_match.macro_environment)} <span style="color:#cbd5e1;font-size:0.88rem;">— {sec_match.macro_details['rationale']}</span></div>
+                <div style="margin-bottom:0.5rem;"><b>Daily Correlated Assets:</b> {badge_html(sec_match.correlated_assets)} <span style="color:#cbd5e1;font-size:0.88rem;">— {sec_match.correlated_details['summary']}</span></div>
+                <div style="margin-bottom:0.5rem;"><b>Tactical Technicals:</b> {badge_html(sec_match.tactical_technicals)} <span style="color:#cbd5e1;font-size:0.88rem;">— {sec_match.tactical_details['summary']}</span></div>
+                """
+            )
 
             st.markdown("##### 🛠️ Technical Breakdown")
             tb = sec_match.tactical_details.get("breakdown", {})
